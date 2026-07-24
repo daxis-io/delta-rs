@@ -33,6 +33,9 @@ for argument in "$@"; do
     -nodefaultlibs)
       # The driver below supplies the startup objects and libraries explicitly.
       ;;
+    -B*)
+      # GCC driver search hints are not linker arguments.
+      ;;
     -Wl,*)
       IFS=',' read -r -a forwarded <<<"${argument#-Wl,}"
       linker_args+=("${forwarded[@]}")
