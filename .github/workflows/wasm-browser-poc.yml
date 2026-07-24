@@ -28,8 +28,7 @@ jobs:
         if: github.ref == 'refs/heads/poc/wasm32-browser-candidate' || github.event_name == 'pull_request'
         run: |
           if git grep -n -E 'daxis-io|rev = "[0-9a-f]{40}"' -- \
-            crates/browser .github/workflows/wasm-browser-poc.yml \
-            ci/compiler-free-linker.sh; then
+            Cargo.toml crates/browser; then
             echo "candidate contains stack-only dependency wiring" >&2
             exit 1
           fi
