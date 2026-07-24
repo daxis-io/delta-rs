@@ -16,8 +16,8 @@ arrow-ipc.workspace = true
 arrow-schema.workspace = true
 async-trait.workspace = true
 bytes.workspace = true
-datafusion = { version = "53.1.0", default-features = false, features = ["parquet", "sql"] }
-delta_kernel = { package = "buoyant_kernel", version = "0.22.0, <0.22.100", default-features = false, features = ["arrow-58", "arrow-conversion", "arrow-expression", "internal-api"] }
+datafusion = { git = "https://github.com/daxis-io/datafusion", rev = "129ed4cb351d1e2e1a3406d07893f584ce1f69f3", default-features = false, features = ["parquet", "sql"] }
+delta_kernel = { package = "buoyant_kernel", git = "https://github.com/daxis-io/delta-kernel-rs", rev = "d72ae5325f86d734d7a0ab9045ba6c13c7d3cdb4", default-features = false, features = ["arrow-58", "arrow-conversion", "arrow-expression", "internal-api"] }
 futures.workspace = true
 object_store.workspace = true
 thiserror.workspace = true
