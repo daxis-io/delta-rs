@@ -13,10 +13,12 @@ use datafusion::datasource::listing::PartitionedFile;
 use datafusion::datasource::physical_plan::{FileGroup, FileScanConfigBuilder, ParquetSource};
 use datafusion::datasource::source::DataSourceExec;
 use datafusion::error::DataFusionError;
+use datafusion::execution::disk_manager::{DiskManagerBuilder, DiskManagerMode};
 use datafusion::execution::object_store::ObjectStoreUrl;
+use datafusion::execution::runtime_env::RuntimeEnvBuilder;
 use datafusion::logical_expr::{Expr, TableType};
 use datafusion::physical_plan::ExecutionPlan;
-use datafusion::prelude::SessionContext;
+use datafusion::prelude::{SessionConfig, SessionContext};
 use delta_kernel::Snapshot;
 use delta_kernel::engine::arrow_conversion::TryIntoArrow;
 use delta_kernel::engine::sync::SyncEngine;
@@ -164,7 +166,13 @@ impl BrowserDeltaTable {
     /// Execute SQL against the active Parquet files and return Arrow IPC.
     pub async fn query_ipc(&self, sql: &str) -> Result<BrowserQueryResult, BrowserDeltaError> {
         let before = self.metrics.snapshot();
-        let context = SessionContext::new();
+        let runtime = RuntimeEnvBuilder::new()
+            .with_disk_manager_builder(
+                DiskManagerBuilder::default().with_mode(DiskManagerMode::Disabled),
+            )
+            .build_arc()?;
+        let config = SessionConfig::new().with_target_partitions(1);
+        let context = SessionContext::new_with_config_rt(config, runtime);
         context.register_object_store(self.object_store_url.as_ref(), Arc::clone(&self.store));
         context.register_table(BROWSER_TABLE_NAME, self.provider.clone())?;
 
