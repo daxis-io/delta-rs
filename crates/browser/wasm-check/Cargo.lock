@@ -368,7 +368,7 @@ checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
 [[package]]
 name = "buoyant_kernel"
 version = "0.22.2"
-source = "git+https://github.com/daxis-io/delta-kernel-rs?rev=cff591dfa36de007ae9ea972ff0344d0ad97786e#cff591dfa36de007ae9ea972ff0344d0ad97786e"
+source = "git+https://github.com/daxis-io/delta-kernel-rs?rev=6d5fd5c642c8df5475d50e6afb5cc4ca6fa0867b#6d5fd5c642c8df5475d50e6afb5cc4ca6fa0867b"
 dependencies = [
  "arrow",
  "buoyant_kernel_derive",
@@ -398,7 +398,7 @@ dependencies = [
 [[package]]
 name = "buoyant_kernel_derive"
 version = "1.0.0"
-source = "git+https://github.com/daxis-io/delta-kernel-rs?rev=cff591dfa36de007ae9ea972ff0344d0ad97786e#cff591dfa36de007ae9ea972ff0344d0ad97786e"
+source = "git+https://github.com/daxis-io/delta-kernel-rs?rev=6d5fd5c642c8df5475d50e6afb5cc4ca6fa0867b#6d5fd5c642c8df5475d50e6afb5cc4ca6fa0867b"
 dependencies = [
  "proc-macro2",
  "quote",
