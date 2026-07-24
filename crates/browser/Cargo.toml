@@ -16,8 +16,8 @@ arrow-ipc.workspace = true
 arrow-schema.workspace = true
 async-trait.workspace = true
 bytes.workspace = true
-datafusion = { version = "53.1.0", default-features = false, features = ["parquet", "sql"] }
-delta_kernel = { package = "buoyant_kernel", version = "0.22.0, <0.22.100", default-features = false, features = ["arrow-58", "arrow-conversion", "arrow-expression", "internal-api"] }
+datafusion = { version = "54.0.0", default-features = false, features = ["parquet", "sql"] }
+delta_kernel = { package = "buoyant_kernel", version = "0.25.1", default-features = false, features = ["arrow-58", "arrow-conversion", "arrow-expression", "internal-api"] }
 futures.workspace = true
 object_store = { version = "0.13.2", default-features = false }
 thiserror.workspace = true

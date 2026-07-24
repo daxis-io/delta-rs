@@ -1,6 +1,5 @@
 //! Read-only, checkpoint-free Delta Lake queries for browser WASM.
 
-use std::any::Any;
 use std::fmt;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -269,10 +268,6 @@ impl ActiveParquetTable {
 
 #[async_trait]
 impl TableProvider for ActiveParquetTable {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn schema(&self) -> SchemaRef {
         Arc::clone(&self.schema)
     }

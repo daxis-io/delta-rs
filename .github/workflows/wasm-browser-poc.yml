@@ -1,10 +1,9 @@
-name: Browser WASM POC
+name: Browser WASM Forward Port
 
 on:
   push:
     branches:
-      - poc/wasm32-browser-candidate
-      - poc/wasm32-browser-stack
+      - upstream/wasm32-browser-engine-incubation
   pull_request:
   workflow_dispatch:
 
@@ -25,7 +24,7 @@ jobs:
             --no-deps --format-version 1 >/dev/null
           bash -n crates/browser/wasm-check/check-dependencies.sh
       - name: Reject Daxis wiring in a candidate
-        if: github.ref == 'refs/heads/poc/wasm32-browser-candidate' || github.event_name == 'pull_request'
+        if: github.ref == 'refs/heads/upstream/wasm32-browser-engine-incubation' || github.event_name == 'pull_request'
         run: |
           if git grep -n -E 'daxis-io|rev = "[0-9a-f]{40}"' -- \
             Cargo.toml crates/browser; then
@@ -35,7 +34,7 @@ jobs:
 
   minimal-toolchain:
     name: Pinned graph without a native compiler
-    if: github.ref == 'refs/heads/poc/wasm32-browser-stack'
+    if: github.ref == 'refs/heads/upstream/wasm32-browser-engine-incubation'
     runs-on: ubuntu-latest
     container:
       image: debian:bookworm-slim
