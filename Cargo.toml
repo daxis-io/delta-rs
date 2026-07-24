@@ -18,33 +18,33 @@ repository = "https://github.com/delta-io/delta.rs"
 [workspace.dependencies]
 #delta_kernel = { package = "buoyant_kernel", path = "../delta-kernel-rs/kernel", features = [
 #delta_kernel = { package = "buoyant_kernel", git = "https://github.com/buoyant-data/delta-kernel-rs", branch = "buoyant/main", features = [
-delta_kernel = { package = "buoyant_kernel", git = "https://github.com/daxis-io/delta-kernel-rs", rev = "d72ae5325f86d734d7a0ab9045ba6c13c7d3cdb4", features = [
+delta_kernel = { package = "buoyant_kernel", git = "https://github.com/daxis-io/delta-kernel-rs", rev = "cff591dfa36de007ae9ea972ff0344d0ad97786e", features = [
     "arrow-58",
     "internal-api",
 ] }
 
 
 # arrow
-arrow = { git = "https://github.com/daxis-io/arrow-rs", rev = "ed6d9505df4404bae287870a1af8b75b604a8e6a" }
-arrow-arith = { git = "https://github.com/daxis-io/arrow-rs", rev = "ed6d9505df4404bae287870a1af8b75b604a8e6a" }
-arrow-array = { git = "https://github.com/daxis-io/arrow-rs", rev = "ed6d9505df4404bae287870a1af8b75b604a8e6a", features = ["chrono-tz"] }
-arrow-buffer = { git = "https://github.com/daxis-io/arrow-rs", rev = "ed6d9505df4404bae287870a1af8b75b604a8e6a" }
-arrow-cast = { git = "https://github.com/daxis-io/arrow-rs", rev = "ed6d9505df4404bae287870a1af8b75b604a8e6a" }
-arrow-ipc = { git = "https://github.com/daxis-io/arrow-rs", rev = "ed6d9505df4404bae287870a1af8b75b604a8e6a" }
-arrow-json = { git = "https://github.com/daxis-io/arrow-rs", rev = "ed6d9505df4404bae287870a1af8b75b604a8e6a" }
-arrow-ord = { git = "https://github.com/daxis-io/arrow-rs", rev = "ed6d9505df4404bae287870a1af8b75b604a8e6a" }
-arrow-row = { git = "https://github.com/daxis-io/arrow-rs", rev = "ed6d9505df4404bae287870a1af8b75b604a8e6a" }
-arrow-schema = { git = "https://github.com/daxis-io/arrow-rs", rev = "ed6d9505df4404bae287870a1af8b75b604a8e6a" }
-arrow-select = { git = "https://github.com/daxis-io/arrow-rs", rev = "ed6d9505df4404bae287870a1af8b75b604a8e6a" }
-object_store = { git = "https://github.com/daxis-io/arrow-rs-object-store", rev = "7c30f6973689b8d1af3ef0e1548490c61a5ac5c7" }
-parquet = { git = "https://github.com/daxis-io/arrow-rs", rev = "ed6d9505df4404bae287870a1af8b75b604a8e6a" }
+arrow = { git = "https://github.com/daxis-io/arrow-rs", rev = "210fa7ad29d7913027fdb148ffd8fd082848d80d" }
+arrow-arith = { git = "https://github.com/daxis-io/arrow-rs", rev = "210fa7ad29d7913027fdb148ffd8fd082848d80d" }
+arrow-array = { git = "https://github.com/daxis-io/arrow-rs", rev = "210fa7ad29d7913027fdb148ffd8fd082848d80d", features = ["chrono-tz"] }
+arrow-buffer = { git = "https://github.com/daxis-io/arrow-rs", rev = "210fa7ad29d7913027fdb148ffd8fd082848d80d" }
+arrow-cast = { git = "https://github.com/daxis-io/arrow-rs", rev = "210fa7ad29d7913027fdb148ffd8fd082848d80d" }
+arrow-ipc = { git = "https://github.com/daxis-io/arrow-rs", rev = "210fa7ad29d7913027fdb148ffd8fd082848d80d" }
+arrow-json = { git = "https://github.com/daxis-io/arrow-rs", rev = "210fa7ad29d7913027fdb148ffd8fd082848d80d" }
+arrow-ord = { git = "https://github.com/daxis-io/arrow-rs", rev = "210fa7ad29d7913027fdb148ffd8fd082848d80d" }
+arrow-row = { git = "https://github.com/daxis-io/arrow-rs", rev = "210fa7ad29d7913027fdb148ffd8fd082848d80d" }
+arrow-schema = { git = "https://github.com/daxis-io/arrow-rs", rev = "210fa7ad29d7913027fdb148ffd8fd082848d80d" }
+arrow-select = { git = "https://github.com/daxis-io/arrow-rs", rev = "210fa7ad29d7913027fdb148ffd8fd082848d80d" }
+object_store = { git = "https://github.com/daxis-io/arrow-rs-object-store", rev = "e3a57c148f7b12159b1f41b336f21bfc1df3cfaf" }
+parquet = { git = "https://github.com/daxis-io/arrow-rs", rev = "210fa7ad29d7913027fdb148ffd8fd082848d80d" }
 
 # datafusion 53
-datafusion = { git = "https://github.com/daxis-io/datafusion", rev = "129ed4cb351d1e2e1a3406d07893f584ce1f69f3" }
-datafusion-datasource = { git = "https://github.com/daxis-io/datafusion", rev = "129ed4cb351d1e2e1a3406d07893f584ce1f69f3" }
-datafusion-physical-expr-adapter = { git = "https://github.com/daxis-io/datafusion", rev = "129ed4cb351d1e2e1a3406d07893f584ce1f69f3" }
-datafusion-ffi = { git = "https://github.com/daxis-io/datafusion", rev = "129ed4cb351d1e2e1a3406d07893f584ce1f69f3" }
-datafusion-proto = { git = "https://github.com/daxis-io/datafusion", rev = "129ed4cb351d1e2e1a3406d07893f584ce1f69f3" }
+datafusion = { git = "https://github.com/daxis-io/datafusion", rev = "4dae3daaccc426d98f8dbb3c234a505bde338cdf" }
+datafusion-datasource = { git = "https://github.com/daxis-io/datafusion", rev = "4dae3daaccc426d98f8dbb3c234a505bde338cdf" }
+datafusion-physical-expr-adapter = { git = "https://github.com/daxis-io/datafusion", rev = "4dae3daaccc426d98f8dbb3c234a505bde338cdf" }
+datafusion-ffi = { git = "https://github.com/daxis-io/datafusion", rev = "4dae3daaccc426d98f8dbb3c234a505bde338cdf" }
+datafusion-proto = { git = "https://github.com/daxis-io/datafusion", rev = "4dae3daaccc426d98f8dbb3c234a505bde338cdf" }
 
 # serde
 serde = { version = "1.0.194", features = ["derive"] }
