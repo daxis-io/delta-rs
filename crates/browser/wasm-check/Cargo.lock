@@ -613,7 +613,7 @@ dependencies = [
 [[package]]
 name = "datafusion"
 version = "53.1.0"
-source = "git+https://github.com/daxis-io/datafusion?rev=520b3845d14362b63b22e55156447f8578cc9b99#520b3845d14362b63b22e55156447f8578cc9b99"
+source = "git+https://github.com/daxis-io/datafusion?rev=0d1d77af6a5974af10dfbe1e3790f3dce05ae617#0d1d77af6a5974af10dfbe1e3790f3dce05ae617"
 dependencies = [
  "arrow",
  "arrow-schema",
@@ -664,7 +664,7 @@ dependencies = [
 [[package]]
 name = "datafusion-catalog"
 version = "53.1.0"
-source = "git+https://github.com/daxis-io/datafusion?rev=520b3845d14362b63b22e55156447f8578cc9b99#520b3845d14362b63b22e55156447f8578cc9b99"
+source = "git+https://github.com/daxis-io/datafusion?rev=0d1d77af6a5974af10dfbe1e3790f3dce05ae617#0d1d77af6a5974af10dfbe1e3790f3dce05ae617"
 dependencies = [
  "arrow",
  "async-trait",
@@ -688,7 +688,7 @@ dependencies = [
 [[package]]
 name = "datafusion-catalog-listing"
 version = "53.1.0"
-source = "git+https://github.com/daxis-io/datafusion?rev=520b3845d14362b63b22e55156447f8578cc9b99#520b3845d14362b63b22e55156447f8578cc9b99"
+source = "git+https://github.com/daxis-io/datafusion?rev=0d1d77af6a5974af10dfbe1e3790f3dce05ae617#0d1d77af6a5974af10dfbe1e3790f3dce05ae617"
 dependencies = [
  "arrow",
  "async-trait",
@@ -710,7 +710,7 @@ dependencies = [
 [[package]]
 name = "datafusion-common"
 version = "53.1.0"
-source = "git+https://github.com/daxis-io/datafusion?rev=520b3845d14362b63b22e55156447f8578cc9b99#520b3845d14362b63b22e55156447f8578cc9b99"
+source = "git+https://github.com/daxis-io/datafusion?rev=0d1d77af6a5974af10dfbe1e3790f3dce05ae617#0d1d77af6a5974af10dfbe1e3790f3dce05ae617"
 dependencies = [
  "ahash",
  "arrow",
@@ -733,7 +733,7 @@ dependencies = [
 [[package]]
 name = "datafusion-common-runtime"
 version = "53.1.0"
-source = "git+https://github.com/daxis-io/datafusion?rev=520b3845d14362b63b22e55156447f8578cc9b99#520b3845d14362b63b22e55156447f8578cc9b99"
+source = "git+https://github.com/daxis-io/datafusion?rev=0d1d77af6a5974af10dfbe1e3790f3dce05ae617#0d1d77af6a5974af10dfbe1e3790f3dce05ae617"
 dependencies = [
  "futures",
  "log",
@@ -743,7 +743,7 @@ dependencies = [
 [[package]]
 name = "datafusion-datasource"
 version = "53.1.0"
-source = "git+https://github.com/daxis-io/datafusion?rev=520b3845d14362b63b22e55156447f8578cc9b99#520b3845d14362b63b22e55156447f8578cc9b99"
+source = "git+https://github.com/daxis-io/datafusion?rev=0d1d77af6a5974af10dfbe1e3790f3dce05ae617#0d1d77af6a5974af10dfbe1e3790f3dce05ae617"
 dependencies = [
  "arrow",
  "async-trait",
@@ -771,7 +771,7 @@ dependencies = [
 [[package]]
 name = "datafusion-datasource-arrow"
 version = "53.1.0"
-source = "git+https://github.com/daxis-io/datafusion?rev=520b3845d14362b63b22e55156447f8578cc9b99#520b3845d14362b63b22e55156447f8578cc9b99"
+source = "git+https://github.com/daxis-io/datafusion?rev=0d1d77af6a5974af10dfbe1e3790f3dce05ae617#0d1d77af6a5974af10dfbe1e3790f3dce05ae617"
 dependencies = [
  "arrow",
  "arrow-ipc",
@@ -794,7 +794,7 @@ dependencies = [
 [[package]]
 name = "datafusion-datasource-csv"
 version = "53.1.0"
-source = "git+https://github.com/daxis-io/datafusion?rev=520b3845d14362b63b22e55156447f8578cc9b99#520b3845d14362b63b22e55156447f8578cc9b99"
+source = "git+https://github.com/daxis-io/datafusion?rev=0d1d77af6a5974af10dfbe1e3790f3dce05ae617#0d1d77af6a5974af10dfbe1e3790f3dce05ae617"
 dependencies = [
  "arrow",
  "async-trait",
@@ -816,7 +816,7 @@ dependencies = [
 [[package]]
 name = "datafusion-datasource-json"
 version = "53.1.0"
-source = "git+https://github.com/daxis-io/datafusion?rev=520b3845d14362b63b22e55156447f8578cc9b99#520b3845d14362b63b22e55156447f8578cc9b99"
+source = "git+https://github.com/daxis-io/datafusion?rev=0d1d77af6a5974af10dfbe1e3790f3dce05ae617#0d1d77af6a5974af10dfbe1e3790f3dce05ae617"
 dependencies = [
  "arrow",
  "async-trait",
@@ -839,7 +839,7 @@ dependencies = [
 [[package]]
 name = "datafusion-datasource-parquet"
 version = "53.1.0"
-source = "git+https://github.com/daxis-io/datafusion?rev=520b3845d14362b63b22e55156447f8578cc9b99#520b3845d14362b63b22e55156447f8578cc9b99"
+source = "git+https://github.com/daxis-io/datafusion?rev=0d1d77af6a5974af10dfbe1e3790f3dce05ae617#0d1d77af6a5974af10dfbe1e3790f3dce05ae617"
 dependencies = [
  "arrow",
  "async-trait",
@@ -868,12 +868,12 @@ dependencies = [
 [[package]]
 name = "datafusion-doc"
 version = "53.1.0"
-source = "git+https://github.com/daxis-io/datafusion?rev=520b3845d14362b63b22e55156447f8578cc9b99#520b3845d14362b63b22e55156447f8578cc9b99"
+source = "git+https://github.com/daxis-io/datafusion?rev=0d1d77af6a5974af10dfbe1e3790f3dce05ae617#0d1d77af6a5974af10dfbe1e3790f3dce05ae617"
 
 [[package]]
 name = "datafusion-execution"
 version = "53.1.0"
-source = "git+https://github.com/daxis-io/datafusion?rev=520b3845d14362b63b22e55156447f8578cc9b99#520b3845d14362b63b22e55156447f8578cc9b99"
+source = "git+https://github.com/daxis-io/datafusion?rev=0d1d77af6a5974af10dfbe1e3790f3dce05ae617#0d1d77af6a5974af10dfbe1e3790f3dce05ae617"
 dependencies = [
  "arrow",
  "arrow-buffer",
@@ -895,7 +895,7 @@ dependencies = [
 [[package]]
 name = "datafusion-expr"
 version = "53.1.0"
-source = "git+https://github.com/daxis-io/datafusion?rev=520b3845d14362b63b22e55156447f8578cc9b99#520b3845d14362b63b22e55156447f8578cc9b99"
+source = "git+https://github.com/daxis-io/datafusion?rev=0d1d77af6a5974af10dfbe1e3790f3dce05ae617#0d1d77af6a5974af10dfbe1e3790f3dce05ae617"
 dependencies = [
  "arrow",
  "async-trait",
@@ -916,7 +916,7 @@ dependencies = [
 [[package]]
 name = "datafusion-expr-common"
 version = "53.1.0"
-source = "git+https://github.com/daxis-io/datafusion?rev=520b3845d14362b63b22e55156447f8578cc9b99#520b3845d14362b63b22e55156447f8578cc9b99"
+source = "git+https://github.com/daxis-io/datafusion?rev=0d1d77af6a5974af10dfbe1e3790f3dce05ae617#0d1d77af6a5974af10dfbe1e3790f3dce05ae617"
 dependencies = [
  "arrow",
  "datafusion-common",
@@ -928,7 +928,7 @@ dependencies = [
 [[package]]
 name = "datafusion-functions"
 version = "53.1.0"
-source = "git+https://github.com/daxis-io/datafusion?rev=520b3845d14362b63b22e55156447f8578cc9b99#520b3845d14362b63b22e55156447f8578cc9b99"
+source = "git+https://github.com/daxis-io/datafusion?rev=0d1d77af6a5974af10dfbe1e3790f3dce05ae617#0d1d77af6a5974af10dfbe1e3790f3dce05ae617"
 dependencies = [
  "arrow",
  "arrow-buffer",
@@ -955,7 +955,7 @@ dependencies = [
 [[package]]
 name = "datafusion-functions-aggregate"
 version = "53.1.0"
-source = "git+https://github.com/daxis-io/datafusion?rev=520b3845d14362b63b22e55156447f8578cc9b99#520b3845d14362b63b22e55156447f8578cc9b99"
+source = "git+https://github.com/daxis-io/datafusion?rev=0d1d77af6a5974af10dfbe1e3790f3dce05ae617#0d1d77af6a5974af10dfbe1e3790f3dce05ae617"
 dependencies = [
  "ahash",
  "arrow",
@@ -976,7 +976,7 @@ dependencies = [
 [[package]]
 name = "datafusion-functions-aggregate-common"
 version = "53.1.0"
-source = "git+https://github.com/daxis-io/datafusion?rev=520b3845d14362b63b22e55156447f8578cc9b99#520b3845d14362b63b22e55156447f8578cc9b99"
+source = "git+https://github.com/daxis-io/datafusion?rev=0d1d77af6a5974af10dfbe1e3790f3dce05ae617#0d1d77af6a5974af10dfbe1e3790f3dce05ae617"
 dependencies = [
  "ahash",
  "arrow",
@@ -988,7 +988,7 @@ dependencies = [
 [[package]]
 name = "datafusion-functions-nested"
 version = "53.1.0"
-source = "git+https://github.com/daxis-io/datafusion?rev=520b3845d14362b63b22e55156447f8578cc9b99#520b3845d14362b63b22e55156447f8578cc9b99"
+source = "git+https://github.com/daxis-io/datafusion?rev=0d1d77af6a5974af10dfbe1e3790f3dce05ae617#0d1d77af6a5974af10dfbe1e3790f3dce05ae617"
 dependencies = [
  "arrow",
  "arrow-ord",
@@ -1012,7 +1012,7 @@ dependencies = [
 [[package]]
 name = "datafusion-functions-table"
 version = "53.1.0"
-source = "git+https://github.com/daxis-io/datafusion?rev=520b3845d14362b63b22e55156447f8578cc9b99#520b3845d14362b63b22e55156447f8578cc9b99"
+source = "git+https://github.com/daxis-io/datafusion?rev=0d1d77af6a5974af10dfbe1e3790f3dce05ae617#0d1d77af6a5974af10dfbe1e3790f3dce05ae617"
 dependencies = [
  "arrow",
  "async-trait",
@@ -1027,7 +1027,7 @@ dependencies = [
 [[package]]
 name = "datafusion-functions-window"
 version = "53.1.0"
-source = "git+https://github.com/daxis-io/datafusion?rev=520b3845d14362b63b22e55156447f8578cc9b99#520b3845d14362b63b22e55156447f8578cc9b99"
+source = "git+https://github.com/daxis-io/datafusion?rev=0d1d77af6a5974af10dfbe1e3790f3dce05ae617#0d1d77af6a5974af10dfbe1e3790f3dce05ae617"
 dependencies = [
  "arrow",
  "datafusion-common",
@@ -1044,7 +1044,7 @@ dependencies = [
 [[package]]
 name = "datafusion-functions-window-common"
 version = "53.1.0"
-source = "git+https://github.com/daxis-io/datafusion?rev=520b3845d14362b63b22e55156447f8578cc9b99#520b3845d14362b63b22e55156447f8578cc9b99"
+source = "git+https://github.com/daxis-io/datafusion?rev=0d1d77af6a5974af10dfbe1e3790f3dce05ae617#0d1d77af6a5974af10dfbe1e3790f3dce05ae617"
 dependencies = [
  "datafusion-common",
  "datafusion-physical-expr-common",
@@ -1053,7 +1053,7 @@ dependencies = [
 [[package]]
 name = "datafusion-macros"
 version = "53.1.0"
-source = "git+https://github.com/daxis-io/datafusion?rev=520b3845d14362b63b22e55156447f8578cc9b99#520b3845d14362b63b22e55156447f8578cc9b99"
+source = "git+https://github.com/daxis-io/datafusion?rev=0d1d77af6a5974af10dfbe1e3790f3dce05ae617#0d1d77af6a5974af10dfbe1e3790f3dce05ae617"
 dependencies = [
  "datafusion-doc",
  "quote",
@@ -1063,7 +1063,7 @@ dependencies = [
 [[package]]
 name = "datafusion-optimizer"
 version = "53.1.0"
-source = "git+https://github.com/daxis-io/datafusion?rev=520b3845d14362b63b22e55156447f8578cc9b99#520b3845d14362b63b22e55156447f8578cc9b99"
+source = "git+https://github.com/daxis-io/datafusion?rev=0d1d77af6a5974af10dfbe1e3790f3dce05ae617#0d1d77af6a5974af10dfbe1e3790f3dce05ae617"
 dependencies = [
  "arrow",
  "chrono",
@@ -1081,7 +1081,7 @@ dependencies = [
 [[package]]
 name = "datafusion-physical-expr"
 version = "53.1.0"
-source = "git+https://github.com/daxis-io/datafusion?rev=520b3845d14362b63b22e55156447f8578cc9b99#520b3845d14362b63b22e55156447f8578cc9b99"
+source = "git+https://github.com/daxis-io/datafusion?rev=0d1d77af6a5974af10dfbe1e3790f3dce05ae617#0d1d77af6a5974af10dfbe1e3790f3dce05ae617"
 dependencies = [
  "ahash",
  "arrow",
@@ -1103,7 +1103,7 @@ dependencies = [
 [[package]]
 name = "datafusion-physical-expr-adapter"
 version = "53.1.0"
-source = "git+https://github.com/daxis-io/datafusion?rev=520b3845d14362b63b22e55156447f8578cc9b99#520b3845d14362b63b22e55156447f8578cc9b99"
+source = "git+https://github.com/daxis-io/datafusion?rev=0d1d77af6a5974af10dfbe1e3790f3dce05ae617#0d1d77af6a5974af10dfbe1e3790f3dce05ae617"
 dependencies = [
  "arrow",
  "datafusion-common",
@@ -1117,7 +1117,7 @@ dependencies = [
 [[package]]
 name = "datafusion-physical-expr-common"
 version = "53.1.0"
-source = "git+https://github.com/daxis-io/datafusion?rev=520b3845d14362b63b22e55156447f8578cc9b99#520b3845d14362b63b22e55156447f8578cc9b99"
+source = "git+https://github.com/daxis-io/datafusion?rev=0d1d77af6a5974af10dfbe1e3790f3dce05ae617#0d1d77af6a5974af10dfbe1e3790f3dce05ae617"
 dependencies = [
  "ahash",
  "arrow",
@@ -1133,7 +1133,7 @@ dependencies = [
 [[package]]
 name = "datafusion-physical-optimizer"
 version = "53.1.0"
-source = "git+https://github.com/daxis-io/datafusion?rev=520b3845d14362b63b22e55156447f8578cc9b99#520b3845d14362b63b22e55156447f8578cc9b99"
+source = "git+https://github.com/daxis-io/datafusion?rev=0d1d77af6a5974af10dfbe1e3790f3dce05ae617#0d1d77af6a5974af10dfbe1e3790f3dce05ae617"
 dependencies = [
  "arrow",
  "datafusion-common",
@@ -1150,7 +1150,7 @@ dependencies = [
 [[package]]
 name = "datafusion-physical-plan"
 version = "53.1.0"
-source = "git+https://github.com/daxis-io/datafusion?rev=520b3845d14362b63b22e55156447f8578cc9b99#520b3845d14362b63b22e55156447f8578cc9b99"
+source = "git+https://github.com/daxis-io/datafusion?rev=0d1d77af6a5974af10dfbe1e3790f3dce05ae617#0d1d77af6a5974af10dfbe1e3790f3dce05ae617"
 dependencies = [
  "ahash",
  "arrow",
@@ -1181,7 +1181,7 @@ dependencies = [
 [[package]]
 name = "datafusion-pruning"
 version = "53.1.0"
-source = "git+https://github.com/daxis-io/datafusion?rev=520b3845d14362b63b22e55156447f8578cc9b99#520b3845d14362b63b22e55156447f8578cc9b99"
+source = "git+https://github.com/daxis-io/datafusion?rev=0d1d77af6a5974af10dfbe1e3790f3dce05ae617#0d1d77af6a5974af10dfbe1e3790f3dce05ae617"
 dependencies = [
  "arrow",
  "datafusion-common",
@@ -1197,7 +1197,7 @@ dependencies = [
 [[package]]
 name = "datafusion-session"
 version = "53.1.0"
-source = "git+https://github.com/daxis-io/datafusion?rev=520b3845d14362b63b22e55156447f8578cc9b99#520b3845d14362b63b22e55156447f8578cc9b99"
+source = "git+https://github.com/daxis-io/datafusion?rev=0d1d77af6a5974af10dfbe1e3790f3dce05ae617#0d1d77af6a5974af10dfbe1e3790f3dce05ae617"
 dependencies = [
  "async-trait",
  "datafusion-common",
@@ -1210,7 +1210,7 @@ dependencies = [
 [[package]]
 name = "datafusion-sql"
 version = "53.1.0"
-source = "git+https://github.com/daxis-io/datafusion?rev=520b3845d14362b63b22e55156447f8578cc9b99#520b3845d14362b63b22e55156447f8578cc9b99"
+source = "git+https://github.com/daxis-io/datafusion?rev=0d1d77af6a5974af10dfbe1e3790f3dce05ae617#0d1d77af6a5974af10dfbe1e3790f3dce05ae617"
 dependencies = [
  "arrow",
  "bigdecimal",
