@@ -2,8 +2,9 @@
 
 use std::any::Any;
 use std::fmt;
-use std::sync::Arc;
+use std::io::{self, Write};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 use arrow_ipc::writer::StreamWriter;
 use arrow_schema::{ArrowError, Schema, SchemaRef};
@@ -19,11 +20,11 @@ use datafusion::execution::runtime_env::RuntimeEnvBuilder;
 use datafusion::logical_expr::{Expr, TableType};
 use datafusion::physical_plan::ExecutionPlan;
 use datafusion::prelude::{SessionConfig, SessionContext};
-use delta_kernel::Snapshot;
 use delta_kernel::engine::arrow_conversion::TryIntoArrow;
 use delta_kernel::engine::sync::SyncEngine;
 use delta_kernel::scan::state::ScanFile;
-use futures::stream::{BoxStream, StreamExt};
+use delta_kernel::Snapshot;
+use futures::stream::{BoxStream, Stream, StreamExt};
 use object_store::memory::InMemory;
 use object_store::path::{Error as ObjectPathError, Path};
 use object_store::{
@@ -83,6 +84,14 @@ pub enum BrowserDeltaError {
         path: String,
         /// Size recorded by the Delta add action.
         size: i64,
+    },
+    /// Delta metadata referenced an object outside the table root.
+    #[error("active Delta file {path} is outside table root {table_root}")]
+    ActiveFileOutsideTable {
+        /// Delta add-action path.
+        path: String,
+        /// Normalized table root.
+        table_root: String,
     },
     /// The serialized query result exceeded the browser boundary.
     #[error(
@@ -178,23 +187,9 @@ impl BrowserDeltaTable {
 
         let dataframe = context.sql(sql).await?;
         let result_schema = dataframe.schema().inner().clone();
-        let batches = dataframe.collect().await?;
-        let row_count = batches.iter().map(|batch| batch.num_rows()).sum();
-
-        let mut ipc_stream = Vec::new();
-        {
-            let mut writer = StreamWriter::try_new(&mut ipc_stream, result_schema.as_ref())?;
-            for batch in &batches {
-                writer.write(batch)?;
-            }
-            writer.finish()?;
-        }
-        if ipc_stream.len() > MAX_IPC_RESULT_BYTES {
-            return Err(BrowserDeltaError::ResultTooLarge {
-                actual_bytes: ipc_stream.len(),
-                max_bytes: MAX_IPC_RESULT_BYTES,
-            });
-        }
+        let batches = dataframe.execute_stream().await?;
+        let (ipc_stream, row_count) =
+            write_ipc_stream(result_schema, batches, MAX_IPC_RESULT_BYTES).await?;
 
         let after = self.metrics.snapshot();
         Ok(BrowserQueryResult {
@@ -204,6 +199,95 @@ impl BrowserDeltaTable {
             request_count: after.requests.saturating_sub(before.requests),
         })
     }
+}
+
+#[derive(Debug)]
+struct CappedIpcBuffer {
+    bytes: Vec<u8>,
+    max_bytes: usize,
+}
+
+impl CappedIpcBuffer {
+    fn new(max_bytes: usize) -> Self {
+        Self {
+            bytes: Vec::with_capacity(max_bytes),
+            max_bytes,
+        }
+    }
+
+    fn into_bytes(self) -> Vec<u8> {
+        self.bytes
+    }
+}
+
+#[derive(Debug, Clone, Copy, Error)]
+#[error("Arrow IPC write attempted {actual_bytes} bytes with a {max_bytes}-byte limit")]
+struct IpcResultLimitExceeded {
+    actual_bytes: usize,
+    max_bytes: usize,
+}
+
+impl Write for CappedIpcBuffer {
+    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+        let actual_bytes = self.bytes.len().saturating_add(buffer.len());
+        if actual_bytes > self.max_bytes {
+            return Err(io::Error::other(IpcResultLimitExceeded {
+                actual_bytes,
+                max_bytes: self.max_bytes,
+            }));
+        }
+
+        self.bytes.extend_from_slice(buffer);
+        Ok(buffer.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+fn map_ipc_error(error: ArrowError) -> BrowserDeltaError {
+    let limit = match &error {
+        ArrowError::IoError(_, source) => source
+            .get_ref()
+            .and_then(|source| source.downcast_ref::<IpcResultLimitExceeded>())
+            .copied(),
+        _ => None,
+    };
+
+    match limit {
+        Some(IpcResultLimitExceeded {
+            actual_bytes,
+            max_bytes,
+        }) => BrowserDeltaError::ResultTooLarge {
+            actual_bytes,
+            max_bytes,
+        },
+        None => BrowserDeltaError::Arrow(error),
+    }
+}
+
+async fn write_ipc_stream<S>(
+    schema: SchemaRef,
+    batches: S,
+    max_bytes: usize,
+) -> Result<(Vec<u8>, usize), BrowserDeltaError>
+where
+    S: Stream<Item = datafusion::error::Result<arrow_array::RecordBatch>>,
+{
+    futures::pin_mut!(batches);
+    let buffer = CappedIpcBuffer::new(max_bytes);
+    let mut writer = StreamWriter::try_new(buffer, schema.as_ref()).map_err(map_ipc_error)?;
+    let mut row_count = 0;
+
+    while let Some(batch) = batches.next().await {
+        let batch = batch?;
+        row_count += batch.num_rows();
+        writer.write(&batch).map_err(map_ipc_error)?;
+    }
+
+    let buffer = writer.into_inner().map_err(map_ipc_error)?;
+    Ok((buffer.into_bytes(), row_count))
 }
 
 fn normalize_table_root(mut table_root: Url) -> Result<Url, BrowserDeltaError> {
@@ -232,6 +316,30 @@ fn push_scan_file(files: &mut Vec<ScanFile>, file: ScanFile) {
     files.push(file);
 }
 
+fn same_origin(left: &Url, right: &Url) -> bool {
+    left.scheme() == right.scheme()
+        && left.host_str() == right.host_str()
+        && left.port_or_known_default() == right.port_or_known_default()
+}
+
+fn active_file_path(table_root: &Url, file_path: &str) -> Result<Path, BrowserDeltaError> {
+    let location = table_root.join(file_path)?;
+    let path = Path::from_url_path(location.path())?;
+    let table_prefix = Path::from_url_path(table_root.path())?;
+
+    if !same_origin(table_root, &location)
+        || path == table_prefix
+        || !path.prefix_matches(&table_prefix)
+    {
+        return Err(BrowserDeltaError::ActiveFileOutsideTable {
+            path: file_path.to_owned(),
+            table_root: table_root.to_string(),
+        });
+    }
+
+    Ok(path)
+}
+
 #[derive(Debug)]
 struct ActiveParquetTable {
     schema: SchemaRef,
@@ -254,8 +362,7 @@ impl ActiveParquetTable {
                         path: file.path.clone(),
                         size: file.size,
                     })?;
-                let location = table_root.join(&file.path)?;
-                let path = Path::from_url_path(location.path())?;
+                let path = active_file_path(table_root, &file.path)?;
                 Ok(PartitionedFile::new(path.to_string(), size))
             })
             .collect::<Result<Vec<_>, BrowserDeltaError>>()?;
@@ -417,5 +524,132 @@ impl ObjectStore for MeteredReadStore {
         _options: CopyOptions,
     ) -> object_store::Result<()> {
         Err(read_only_error("copy_opts"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::task::Poll;
+
+    use arrow_array::{RecordBatch, StringArray};
+    use arrow_schema::{DataType, Field, Schema};
+    use delta_kernel::scan::state::DvInfo;
+
+    use super::*;
+
+    fn scan_file(path: &str) -> ScanFile {
+        ScanFile {
+            path: path.to_owned(),
+            size: 1,
+            modification_time: 0,
+            stats: None,
+            dv_info: DvInfo::default(),
+            transform: None,
+            partition_values: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn active_files_cannot_escape_the_table_origin_or_path_prefix() {
+        let table_root = Url::parse("memory://fixture/table/").unwrap();
+        let object_store_url = ObjectStoreUrl::parse("memory://fixture/").unwrap();
+
+        for path in [
+            "../outside.parquet",
+            "/outside.parquet",
+            "memory://other/table/part.parquet",
+            "https://attacker.invalid/table/part.parquet",
+            "%2e%2e/outside.parquet",
+        ] {
+            let error = ActiveParquetTable::new(
+                Arc::new(Schema::empty()),
+                object_store_url.clone(),
+                &table_root,
+                vec![scan_file(path)],
+            )
+            .unwrap_err();
+            assert!(
+                matches!(
+                    error,
+                    BrowserDeltaError::ActiveFileOutsideTable {
+                        path: ref rejected,
+                        table_root: ref rejected_root
+                    } if rejected == path && rejected_root == table_root.as_str()
+                ),
+                "unexpected rejection for {path}: {error}"
+            );
+        }
+
+        let encoded_separator = ActiveParquetTable::new(
+            Arc::new(Schema::empty()),
+            object_store_url,
+            &table_root,
+            vec![scan_file("..%2Foutside.parquet")],
+        );
+        assert!(encoded_separator.is_err());
+    }
+
+    #[test]
+    fn active_files_allow_descendants_of_the_table_root() {
+        let table_root = Url::parse("memory://fixture/table/").unwrap();
+        let object_store_url = ObjectStoreUrl::parse("memory://fixture/").unwrap();
+        let result = ActiveParquetTable::new(
+            Arc::new(Schema::empty()),
+            object_store_url,
+            &table_root,
+            vec![scan_file("nested/part.parquet")],
+        );
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn ipc_limit_stops_polling_the_query_stream() {
+        let schema = Arc::new(Schema::new(vec![Field::new(
+            "value",
+            DataType::Utf8,
+            false,
+        )]));
+        let batch = RecordBatch::try_new(
+            schema.clone(),
+            vec![Arc::new(StringArray::from(vec!["x".repeat(4096)]))],
+        )
+        .unwrap();
+        let polls = Arc::new(AtomicUsize::new(0));
+        let poll_count = Arc::clone(&polls);
+        let mut next_batch = Some(batch);
+        let stream = futures::stream::poll_fn(move |_| {
+            poll_count.fetch_add(1, Ordering::Relaxed);
+            match next_batch.take() {
+                Some(batch) => Poll::Ready(Some(Ok(batch))),
+                None => panic!("query stream was polled after the IPC budget was exceeded"),
+            }
+        });
+
+        let error = write_ipc_stream(schema, stream, 512).await.unwrap_err();
+        assert!(
+            matches!(
+                error,
+                BrowserDeltaError::ResultTooLarge {
+                    actual_bytes,
+                    max_bytes: 512
+                } if actual_bytes > 512
+            ),
+            "unexpected error: {error}"
+        );
+        assert_eq!(polls.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn capped_ipc_buffer_rejects_before_exceeding_its_limit() {
+        let mut buffer = CappedIpcBuffer::new(4);
+        buffer.write_all(b"1234").unwrap();
+
+        let error = buffer.write_all(b"5").unwrap_err();
+        assert_eq!(buffer.bytes, b"1234");
+        assert_eq!(buffer.bytes.capacity(), 4);
+        assert_eq!(error.kind(), io::ErrorKind::Other);
     }
 }
