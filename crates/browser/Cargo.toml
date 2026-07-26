@@ -16,10 +16,10 @@ arrow-ipc.workspace = true
 arrow-schema.workspace = true
 async-trait.workspace = true
 bytes.workspace = true
-datafusion = { git = "https://github.com/daxis-io/datafusion", rev = "0d1d77af6a5974af10dfbe1e3790f3dce05ae617", default-features = false, features = ["parquet", "sql"] }
-delta_kernel = { package = "buoyant_kernel", git = "https://github.com/daxis-io/delta-kernel-rs", rev = "79c48fe4e22431efb144da4a0db46bb8ff5ce9d8", default-features = false, features = ["arrow-58", "arrow-conversion", "arrow-expression", "internal-api"] }
+datafusion = { git = "https://github.com/daxis-io/datafusion", rev = "aa1d3bfb591e0e10594160119d8899d4b856c3f5", default-features = false, features = ["parquet", "sql"] }
+delta_kernel = { package = "buoyant_kernel", git = "https://github.com/daxis-io/delta-kernel-rs", rev = "bbccfb394bf4a3eac54e125d71996a66a5a0e13a", default-features = false, features = ["arrow-58", "arrow-conversion", "arrow-expression", "daxis-browser-stack", "internal-api"] }
 futures.workspace = true
-object_store = { git = "https://github.com/daxis-io/arrow-rs-object-store", rev = "54109e3e6797522ccb2ee5d43cad2a9cd0013074", default-features = false }
+object_store = { git = "https://github.com/daxis-io/arrow-rs-object-store", rev = "a04240eafdc5833e34fe21d4b348ee399177def6", default-features = false }
 thiserror.workspace = true
 url.workspace = true
 
