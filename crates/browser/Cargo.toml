@@ -1,0 +1,29 @@
+[package]
+name = "deltalake-browser"
+version = "0.32.4"
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Read-only Delta Lake snapshot and query support for browser WASM"
+publish = false
+
+[dependencies]
+arrow-array.workspace = true
+arrow-ipc.workspace = true
+arrow-schema.workspace = true
+async-trait.workspace = true
+bytes.workspace = true
+datafusion = { version = "53.1.0", default-features = false, features = ["parquet", "sql"] }
+delta_kernel = { package = "buoyant_kernel", version = "0.22.0, <0.22.100", default-features = false, features = ["arrow-58", "arrow-conversion", "arrow-expression", "internal-api"] }
+futures.workspace = true
+object_store = { version = "0.13.2", default-features = false }
+serde_json.workspace = true
+thiserror.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+parquet = { workspace = true, features = ["arrow", "snap"] }
+tokio = { workspace = true, features = ["macros", "rt"] }

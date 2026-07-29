@@ -1,0 +1,73 @@
+name: Browser WASM POC
+
+on:
+  push:
+    branches:
+      - poc/wasm32-browser-candidate
+      - poc/wasm32-browser-stack
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  candidate-cleanliness:
+    name: Candidate cleanliness
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Validate browser manifests and policy script
+        run: |
+          cargo metadata --manifest-path crates/browser/Cargo.toml \
+            --no-deps --format-version 1 >/dev/null
+          cargo metadata --manifest-path crates/browser/wasm-check/Cargo.toml \
+            --no-deps --format-version 1 >/dev/null
+          bash -n crates/browser/wasm-check/check-dependencies.sh
+      - name: Reject Daxis wiring in a candidate
+        if: github.ref == 'refs/heads/poc/wasm32-browser-candidate' || github.event_name == 'pull_request'
+        run: |
+          if git grep -n -E 'daxis-io|rev = "[0-9a-f]{40}"' -- \
+            Cargo.toml crates/browser; then
+            echo "candidate contains stack-only dependency wiring" >&2
+            exit 1
+          fi
+
+  minimal-toolchain:
+    name: Pinned graph without a native compiler
+    if: github.ref == 'refs/heads/poc/wasm32-browser-stack'
+    runs-on: ubuntu-latest
+    container:
+      image: debian:bookworm-slim
+    env:
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: ${{ github.workspace }}/ci/compiler-free-linker.sh
+    steps:
+      - name: Install transport and linker tools
+        run: |
+          apt-get update
+          apt-get install --yes --no-install-recommends \
+            ca-certificates curl git libc6-dev libgcc-12-dev lld ripgrep
+          rm -rf /var/lib/apt/lists/*
+      - uses: actions/checkout@v6
+      - name: Install Rust and the browser target
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs |
+            sh -s -- -y --profile minimal --default-toolchain 1.91.1
+          "$HOME/.cargo/bin/rustup" target add wasm32-unknown-unknown
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - name: Verify the compiler-free environment
+        run: |
+          test -z "${RUSTFLAGS:-}"
+          for tool in cc gcc clang c++ g++ cmake; do
+            if command -v "$tool"; then
+              echo "unexpected native build tool: $tool" >&2
+              exit 1
+            fi
+          done
+          command -v ld.lld
+          test -x "$CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER"
+      - name: Check the locked browser graph
+        run: |
+          cargo check --manifest-path crates/browser/wasm-check/Cargo.toml \
+            --target wasm32-unknown-unknown --locked
+          crates/browser/wasm-check/check-dependencies.sh
