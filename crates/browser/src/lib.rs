@@ -1,4 +1,8 @@
-//! Read-only, checkpoint-free Delta Lake queries for browser WASM.
+//! Read-only Delta Lake queries for browser WASM.
+//!
+//! Supports checkpointed tables: the synchronous kernel engine requires every
+//! log object up front, so the log is discovered and prefetched over async HTTP
+//! before replay begins.
 
 use std::any::Any;
 use std::fmt;
@@ -36,6 +40,103 @@ use url::Url;
 
 /// SQL name assigned to the active Delta snapshot.
 pub const BROWSER_TABLE_NAME: &str = "delta";
+
+/// Upper bound on commits probed past a checkpoint during prefetch.
+///
+/// The kernel engine used in the browser is synchronous, so every log object it
+/// will read has to be fetched before replay begins. Discovery therefore probes
+/// consecutive versions rather than listing, which works against plain HTTPS
+/// origins that do not serve directory listings. The bound stops a missing or
+/// stale `_last_checkpoint` from turning into an unbounded request loop.
+pub const MAX_PREFETCHED_COMMITS: u64 = 512;
+
+/// Fetch every Delta log object the synchronous kernel engine will need.
+///
+/// Reads `_last_checkpoint` when present, prefetches the checkpoint parts it
+/// names, and then probes consecutive commits until one is absent. The absent
+/// commit marks the tail: Delta commit versions are contiguous, so the first
+/// gap is the end of the log.
+async fn prefetch_delta_log(
+    table_root: &Url,
+    store: &dyn ObjectStore,
+    cache: &InMemory,
+) -> Result<(), BrowserDeltaError> {
+    let log_object = |relative: &str| -> Result<Path, BrowserDeltaError> {
+        let url = table_root.join(&format!("_delta_log/{relative}"))?;
+        Ok(Path::from_url_path(url.path())?)
+    };
+
+    // `_last_checkpoint` is a hint, not a guarantee. A table without one simply
+    // replays from version 0.
+    let last_checkpoint = log_object("_last_checkpoint")?;
+    let checkpoint_version = match fetch_optional(store, &last_checkpoint).await? {
+        Some(bytes) => {
+            let parsed: serde_json::Value = serde_json::from_slice(&bytes)
+                .map_err(|error| BrowserDeltaError::InvalidLastCheckpoint(error.to_string()))?;
+            let version = parsed.get("version").and_then(serde_json::Value::as_u64).ok_or_else(
+                || BrowserDeltaError::InvalidLastCheckpoint("missing integer \"version\"".into()),
+            )?;
+            let parts = parsed
+                .get("parts")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(1)
+                .max(1);
+
+            for part in 1..=parts {
+                let name = if parts == 1 {
+                    format!("{version:020}.checkpoint.parquet")
+                } else {
+                    format!("{version:020}.checkpoint.{part:010}.{parts:010}.parquet")
+                };
+                let path = log_object(&name)?;
+                let bytes = store.get(&path).await?.bytes().await?;
+                cache.put(&path, bytes.into()).await?;
+            }
+
+            cache.put(&last_checkpoint, bytes.into()).await?;
+            Some(version)
+        }
+        None => None,
+    };
+
+    // Commits at or after the checkpoint still have to be replayed on top of it.
+    let start = checkpoint_version.unwrap_or(0);
+    let mut found_any = false;
+    for offset in 0..MAX_PREFETCHED_COMMITS {
+        let version = start + offset;
+        let path = log_object(&format!("{version:020}.json"))?;
+        match fetch_optional(store, &path).await? {
+            Some(bytes) => {
+                cache.put(&path, bytes.into()).await?;
+                found_any = true;
+            }
+            // A checkpoint may subsume its own commit, so a gap at exactly the
+            // checkpoint version is expected; any later gap is the log tail.
+            None if offset == 0 && checkpoint_version.is_some() => continue,
+            None => return Ok(()),
+        }
+    }
+
+    if found_any {
+        return Err(BrowserDeltaError::LogTailTooLong {
+            start,
+            limit: MAX_PREFETCHED_COMMITS,
+        });
+    }
+    Ok(())
+}
+
+/// `GET` an object, mapping a missing object to `None` rather than an error.
+async fn fetch_optional(
+    store: &dyn ObjectStore,
+    path: &Path,
+) -> Result<Option<bytes::Bytes>, BrowserDeltaError> {
+    match store.get(path).await {
+        Ok(result) => Ok(Some(result.bytes().await?)),
+        Err(object_store::Error::NotFound { .. }) => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
 
 /// Maximum Arrow IPC result accepted by the POC boundary.
 pub const MAX_IPC_RESULT_BYTES: usize = 8 * 1024 * 1024;
@@ -77,6 +178,19 @@ pub enum BrowserDeltaError {
     /// The table root is not a directory URL.
     #[error("invalid browser table root: {0}")]
     InvalidTableRoot(String),
+    /// `_last_checkpoint` was present but could not be understood.
+    #[error("invalid Delta _last_checkpoint: {0}")]
+    InvalidLastCheckpoint(String),
+    /// The commit probe passed its bound before reaching the end of the log.
+    #[error(
+        "Delta log tail exceeded the {limit}-commit browser prefetch bound starting at version {start}"
+    )]
+    LogTailTooLong {
+        /// First version the probe requested.
+        start: u64,
+        /// Configured probe bound.
+        limit: u64,
+    },
     /// Delta metadata contained an invalid file size.
     #[error("active Delta file {path} has invalid size {size}")]
     InvalidFileSize {
@@ -116,7 +230,7 @@ pub struct BrowserDeltaTable {
 }
 
 impl BrowserDeltaTable {
-    /// Prefetch and replay the checkpoint-free version-0 Delta log.
+    /// Prefetch and replay the Delta log, resolving the latest snapshot.
     pub async fn open(
         table_root: Url,
         store: Arc<dyn ObjectStore>,
@@ -127,18 +241,12 @@ impl BrowserDeltaTable {
         let store: Arc<dyn ObjectStore> =
             Arc::new(MeteredReadStore::new(store, Arc::clone(&metrics)));
 
-        let log_url = table_root.join("_delta_log/00000000000000000000.json")?;
-        let log_path = Path::from_url_path(log_url.path())?;
-        let log_bytes = store.get(&log_path).await?.bytes().await?;
-
         let cache = Arc::new(InMemory::new());
-        cache.put(&log_path, log_bytes.into()).await?;
+        prefetch_delta_log(&table_root, store.as_ref(), cache.as_ref()).await?;
         let cache_store: Arc<dyn ObjectStore> = cache;
         let engine = Arc::new(SyncEngine::new_with_store(cache_store));
 
-        let snapshot = Snapshot::builder_for(table_root.as_str())
-            .at_version(0)
-            .build(engine.as_ref())?;
+        let snapshot = Snapshot::builder_for(table_root.as_str()).build(engine.as_ref())?;
         let scan = Arc::clone(&snapshot).scan_builder().build()?;
         let mut active_files = Vec::new();
         for metadata in scan.scan_metadata(engine.as_ref())? {
