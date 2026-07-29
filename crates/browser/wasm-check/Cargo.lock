@@ -1460,6 +1460,7 @@ dependencies = [
  "datafusion",
  "futures",
  "object_store 0.13.2 (git+https://github.com/daxis-io/arrow-rs-object-store?rev=ab9fda65805487edf5487e63082cab8111f0a178)",
+ "serde_json",
  "thiserror",
  "url",
 ]

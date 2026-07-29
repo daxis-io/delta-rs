@@ -20,10 +20,10 @@ datafusion = { git = "https://github.com/daxis-io/datafusion", rev = "54a376b161
 delta_kernel = { package = "buoyant_kernel", git = "https://github.com/daxis-io/delta-kernel-rs", rev = "056f7223af0c5c6d6e56502615c3943cfb94132a", default-features = false, features = ["arrow-58", "arrow-conversion", "arrow-expression", "daxis-browser-stack", "internal-api"] }
 futures.workspace = true
 object_store = { git = "https://github.com/daxis-io/arrow-rs-object-store", rev = "ab9fda65805487edf5487e63082cab8111f0a178", default-features = false }
+serde_json.workspace = true
 thiserror.workspace = true
 url.workspace = true
 
 [dev-dependencies]
 parquet = { workspace = true, features = ["arrow", "snap"] }
-serde_json.workspace = true
 tokio = { workspace = true, features = ["macros", "rt"] }
