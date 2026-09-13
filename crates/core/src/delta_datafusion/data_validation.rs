@@ -1,4 +1,3 @@
-use std::any::Any;
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::pin::Pin;
@@ -17,9 +16,7 @@ use datafusion::common::{
 };
 use datafusion::config::ConfigOptions;
 use datafusion::error::{DataFusionError, Result};
-use datafusion::execution::{
-    RecordBatchStream, SendableRecordBatchStream, SessionState, TaskContext,
-};
+use datafusion::execution::{RecordBatchStream, SendableRecordBatchStream, TaskContext};
 use datafusion::logical_expr::utils::conjunction;
 use datafusion::logical_expr::{
     ColumnarValue, ExprSchemable as _, LogicalPlan, Operator, UserDefinedLogicalNode,
@@ -217,7 +214,8 @@ impl ExtensionPlanner for DataValidationExtensionPlanner {
         node: &dyn UserDefinedLogicalNode,
         _logical_inputs: &[&LogicalPlan],
         physical_inputs: &[Arc<dyn ExecutionPlan>],
-        session_state: &SessionState,
+        session_state: &dyn datafusion::catalog::Session,
+        _planning_ctx: &datafusion::logical_expr::physical_planning_context::PhysicalPlanningContext,
     ) -> Result<Option<Arc<dyn ExecutionPlan>>> {
         if let Some(node) = node.as_any().downcast_ref::<DataValidation>() {
             if physical_inputs.len() != 1 {
@@ -446,8 +444,15 @@ impl DisplayAs for DataValidationExec {
 }
 
 impl ExecutionPlan for DataValidationExec {
-    fn as_any(&self) -> &dyn Any {
-        self
+    fn apply_expressions(
+        &self,
+        f: &mut dyn FnMut(
+            &Arc<dyn datafusion::physical_expr::PhysicalExpr>,
+        ) -> datafusion::common::Result<
+            datafusion::common::tree_node::TreeNodeRecursion,
+        >,
+    ) -> datafusion::common::Result<datafusion::common::tree_node::TreeNodeRecursion> {
+        f(&self.check_expression)
     }
 
     fn name(&self) -> &str {
@@ -491,8 +496,11 @@ impl ExecutionPlan for DataValidationExec {
         )))
     }
 
-    fn partition_statistics(&self, partition: Option<usize>) -> Result<Statistics> {
-        self.input.partition_statistics(partition)
+    fn partition_statistics(&self, partition: Option<usize>) -> Result<Arc<Statistics>> {
+        datafusion::physical_plan::statistics::StatisticsContext::new().compute(
+            self.input.as_ref(),
+            &datafusion::physical_plan::statistics::StatisticsArgs::new().with_partition(partition),
+        )
     }
 
     fn maintains_input_order(&self) -> Vec<bool> {
@@ -1186,10 +1194,7 @@ mod tests {
             DataValidationExec::try_new_with_predicates(&ctx.state(), memory_exec, predicates)?;
 
         // Check that maintains_input_order returns true
-        let downcast = validated_exec
-            .as_any()
-            .downcast_ref::<DataValidationExec>()
-            .unwrap();
+        let downcast = validated_exec.downcast_ref::<DataValidationExec>().unwrap();
         assert_eq!(downcast.maintains_input_order(), vec![true]);
 
         Ok(())
@@ -1232,13 +1237,13 @@ mod tests {
             DataValidationExec::try_new_with_predicates(&ctx.state(), memory_exec1, predicates)?;
 
         // Create new plan with different child
-        let new_exec = validated_exec.with_new_children(vec![memory_exec2])?;
-        assert!(
-            new_exec
-                .as_any()
-                .downcast_ref::<DataValidationExec>()
-                .is_some()
-        );
+        let new_exec = validated_exec.replace_children(
+            vec![memory_exec2],
+            datafusion::physical_plan::execution_plan::ReplaceChildrenOptions::new(
+                datafusion::physical_plan::execution_plan::ChildrenPropertiesMode::Recompute,
+            ),
+        )?;
+        assert!(new_exec.downcast_ref::<DataValidationExec>().is_some());
 
         Ok(())
     }
@@ -1254,7 +1259,12 @@ mod tests {
             DataValidationExec::try_new_with_predicates(&ctx.state(), memory_exec, predicates)?;
 
         // Try to create with wrong number of children
-        let result = validated_exec.with_new_children(vec![]);
+        let result = validated_exec.replace_children(
+            vec![],
+            datafusion::physical_plan::execution_plan::ReplaceChildrenOptions::new(
+                datafusion::physical_plan::execution_plan::ChildrenPropertiesMode::Recompute,
+            ),
+        );
         assert!(result.is_err());
         assert!(
             result

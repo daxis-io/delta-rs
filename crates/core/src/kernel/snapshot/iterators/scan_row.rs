@@ -445,6 +445,11 @@ fn primitive_partition_values_to_array(
     values: &[Scalar],
 ) -> DeltaResult<ArrayRef> {
     Ok(match primitive_type {
+        PrimitiveType::Void | PrimitiveType::IntervalYearMonth | PrimitiveType::IntervalDayTime => {
+            return Err(DeltaTableError::SchemaMismatch {
+                msg: format!("Unsupported partition type {primitive_type} for {field_name}"),
+            });
+        }
         PrimitiveType::String => Arc::new(StringArray::from_iter(typed_partition_values(
             field_name,
             expected_data_type,
@@ -637,6 +642,8 @@ fn scalar_type_name(value: &Scalar) -> &'static str {
         Scalar::Struct(_) => "Struct",
         Scalar::Array(_) => "Array",
         Scalar::Map(_) => "Map",
+        Scalar::IntervalYearMonth(_) => "IntervalYearMonth",
+        Scalar::IntervalDayTime(_) => "IntervalDayTime",
     }
 }
 

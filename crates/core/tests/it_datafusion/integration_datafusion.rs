@@ -132,10 +132,10 @@ mod local {
             &mut self,
             plan: &dyn ExecutionPlan,
         ) -> std::result::Result<bool, Self::Error> {
-            if let Some(exec) = plan.as_any().downcast_ref::<DataSourceExec>() {
+            if let Some(exec) = plan.downcast_ref::<DataSourceExec>() {
                 let files = get_scanned_files(exec);
                 self.scanned_files.extend(files);
-            } else if let Some(exec) = plan.as_any().downcast_ref::<DeltaScanExec>() {
+            } else if let Some(exec) = plan.downcast_ref::<DeltaScanExec>() {
                 self.keep_count = exec
                     .metrics()
                     .and_then(|m| m.sum_by_name("count_files_scanned").map(|v| v.as_usize()))
@@ -685,7 +685,12 @@ mod local {
         let scan = provider
             .scan(&ctx.state(), None, &[col("value").is_not_null()], None)
             .await?;
-        let statistics = scan.partition_statistics(None).unwrap();
+        let statistics = datafusion::physical_plan::statistics::StatisticsContext::new()
+            .compute(
+                scan.as_ref(),
+                &datafusion::physical_plan::statistics::StatisticsArgs::new().with_partition(None),
+            )
+            .unwrap();
 
         assert_eq!(statistics.num_rows, Precision::Inexact(4));
 
@@ -724,7 +729,12 @@ mod local {
         let table = open_fs_path("../test/tests/data/delta-0.2.0");
         let provider = table.table_provider().await.unwrap();
         let scan = provider.scan(&ctx.state(), None, &[], None).await?;
-        let statistics = scan.partition_statistics(None).unwrap();
+        let statistics = datafusion::physical_plan::statistics::StatisticsContext::new()
+            .compute(
+                scan.as_ref(),
+                &datafusion::physical_plan::statistics::StatisticsArgs::new().with_partition(None),
+            )
+            .unwrap();
 
         assert_eq!(statistics.num_rows, Precision::Absent);
 
@@ -2683,8 +2693,10 @@ mod insert_into_tests {
 
         let provider = final_table.table_provider().await?;
         let scan = provider.scan(&ctx.state(), None, &[], None).await?;
-        if let Ok(stats) = scan.partition_statistics(None)
-            && let Precision::Exact(num_rows) = stats.num_rows
+        if let Ok(stats) = datafusion::physical_plan::statistics::StatisticsContext::new().compute(
+            scan.as_ref(),
+            &datafusion::physical_plan::statistics::StatisticsArgs::new().with_partition(None),
+        ) && let Precision::Exact(num_rows) = stats.num_rows
         {
             assert_eq!(
                 num_rows, 4,

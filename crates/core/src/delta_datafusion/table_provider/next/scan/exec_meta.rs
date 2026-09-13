@@ -3,7 +3,6 @@
 //! This module implements [`DeltaScanMetaExec`], which answers queries using only file
 //! metadata and statistics, avoiding the cost of reading actual Parquet data files.
 
-use std::any::Any;
 use std::collections::VecDeque;
 use std::pin::Pin;
 use std::sync::{Arc, LazyLock};
@@ -192,12 +191,19 @@ impl DeltaScanMetaExec {
 }
 
 impl ExecutionPlan for DeltaScanMetaExec {
-    fn name(&self) -> &'static str {
-        "DeltaScanMetaExec"
+    fn apply_expressions(
+        &self,
+        _f: &mut dyn FnMut(
+            &Arc<dyn datafusion::physical_expr::PhysicalExpr>,
+        ) -> datafusion::common::Result<
+            datafusion::common::tree_node::TreeNodeRecursion,
+        >,
+    ) -> datafusion::common::Result<datafusion::common::tree_node::TreeNodeRecursion> {
+        Ok(datafusion::common::tree_node::TreeNodeRecursion::Continue)
     }
 
-    fn as_any(&self) -> &dyn Any {
-        self
+    fn name(&self) -> &'static str {
+        "DeltaScanMetaExec"
     }
 
     fn properties(&self) -> &Arc<PlanProperties> {
@@ -293,12 +299,12 @@ impl ExecutionPlan for DeltaScanMetaExec {
         None
     }
 
-    fn partition_statistics(&self, partition: Option<usize>) -> Result<Statistics> {
-        Ok(Statistics {
+    fn partition_statistics(&self, partition: Option<usize>) -> Result<Arc<Statistics>> {
+        Ok(Arc::new(Statistics {
             num_rows: Precision::Exact(self.exact_num_rows(partition)?),
             total_byte_size: Precision::Absent,
             column_statistics: Statistics::unknown_column(self.schema().as_ref()),
-        })
+        }))
     }
 
     fn gather_filters_for_pushdown(
@@ -696,11 +702,17 @@ mod tests {
             .scan(&session.state(), Some(&empty_projection), &[], None)
             .await?;
         assert!(
-            scan.as_any().downcast_ref::<DeltaScanMetaExec>().is_some(),
+            scan.downcast_ref::<DeltaScanMetaExec>().is_some(),
             "expected metadata-only scan\n{diagnostics}"
         );
         assert_eq!(
-            scan.partition_statistics(None)?.num_rows,
+            datafusion::physical_plan::statistics::StatisticsContext::new()
+                .compute(
+                    scan.as_ref(),
+                    &datafusion::physical_plan::statistics::StatisticsArgs::new()
+                        .with_partition(None)
+                )?
+                .num_rows,
             Precision::Exact(expected_row_count),
             "metadata-only scan reported the wrong row count\n{diagnostics}"
         );
@@ -817,7 +829,7 @@ mod tests {
             )
             .await?;
 
-        let downcast = scan.as_any().downcast_ref::<DeltaScanMetaExec>();
+        let downcast = scan.downcast_ref::<DeltaScanMetaExec>();
         assert!(downcast.is_some());
 
         session.register_table("delta_table", provider).unwrap();
@@ -870,7 +882,7 @@ mod tests {
             )
             .await?;
 
-        let downcast = scan.as_any().downcast_ref::<DeltaScanMetaExec>();
+        let downcast = scan.downcast_ref::<DeltaScanMetaExec>();
         assert!(downcast.is_some());
 
         let expected = vec![
@@ -971,7 +983,7 @@ mod tests {
             )
             .await?;
 
-        let downcast = scan.as_any().downcast_ref::<DeltaScanMetaExec>();
+        let downcast = scan.downcast_ref::<DeltaScanMetaExec>();
         assert!(downcast.is_some());
 
         let data = collect_partitioned(scan, session.task_ctx())
@@ -998,7 +1010,7 @@ mod tests {
         let scan = provider
             .scan(&session.state(), Some(&vec![data_idx]), &[], None)
             .await?;
-        let downcast = scan.as_any().downcast_ref::<DeltaScanMetaExec>();
+        let downcast = scan.downcast_ref::<DeltaScanMetaExec>();
         assert!(downcast.is_some());
         assert_eq!(
             scan.schema()
@@ -1122,7 +1134,6 @@ mod tests {
             .scan(&session.state(), Some(&empty_projection), &[], None)
             .await?;
         let template = scan
-            .as_any()
             .downcast_ref::<DeltaScanMetaExec>()
             .expect("expected metadata-only scan");
 
@@ -1155,20 +1166,37 @@ mod tests {
         );
 
         let repartitioned = repartitioned
-            .as_any()
             .downcast_ref::<DeltaScanMetaExec>()
             .expect("expected repartitioned DeltaScanMetaExec");
         assert_eq!(repartitioned.input.len(), 2);
         assert_eq!(
-            repartitioned.partition_statistics(Some(0))?.num_rows,
+            datafusion::physical_plan::statistics::StatisticsContext::new()
+                .compute(
+                    repartitioned,
+                    &datafusion::physical_plan::statistics::StatisticsArgs::new()
+                        .with_partition(Some(0))
+                )?
+                .num_rows,
             Precision::Exact(12)
         );
         assert_eq!(
-            repartitioned.partition_statistics(Some(1))?.num_rows,
+            datafusion::physical_plan::statistics::StatisticsContext::new()
+                .compute(
+                    repartitioned,
+                    &datafusion::physical_plan::statistics::StatisticsArgs::new()
+                        .with_partition(Some(1))
+                )?
+                .num_rows,
             Precision::Exact(8)
         );
         assert_eq!(
-            repartitioned.partition_statistics(None)?.num_rows,
+            datafusion::physical_plan::statistics::StatisticsContext::new()
+                .compute(
+                    repartitioned,
+                    &datafusion::physical_plan::statistics::StatisticsArgs::new()
+                        .with_partition(None)
+                )?
+                .num_rows,
             Precision::Exact(20)
         );
 

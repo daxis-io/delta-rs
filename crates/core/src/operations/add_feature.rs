@@ -125,8 +125,7 @@ impl std::future::IntoFuture for AddTableFeatureBuilder {
                 }
             }
 
-            protocol = protocol.append_reader_features(&reader_features);
-            protocol = protocol.append_writer_features(&writer_features);
+            protocol = protocol.append_features(&reader_features, &writer_features)?;
 
             let operation = DeltaOperation::AddFeature {
                 name: name.to_vec(),

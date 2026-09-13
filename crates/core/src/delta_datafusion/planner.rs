@@ -14,7 +14,7 @@
 //!         node: &dyn UserDefinedLogicalNode,
 //!         _logical_inputs: &[&LogicalPlan],
 //!         physical_inputs: &[Arc<dyn ExecutionPlan>],
-//!         session_state: &SessionState,
+//!         session_state: &dyn datafusion::catalog::Session,
 //!     ) -> DataFusionResult<Option<Arc<dyn ExecutionPlan>>> {}
 //!
 //! let merge_planner = DeltaPlanner::<MergeMetricExtensionPlanner> {
@@ -28,7 +28,7 @@ use async_trait::async_trait;
 use datafusion::logical_expr::{LogicalPlan, UserDefinedLogicalNode};
 use datafusion::physical_planner::PhysicalPlanner;
 use datafusion::{
-    execution::{context::QueryPlanner, session_state::SessionState},
+    execution::context::QueryPlanner,
     physical_plan::ExecutionPlan,
     physical_planner::{DefaultPhysicalPlanner, ExtensionPlanner},
 };
@@ -68,7 +68,7 @@ impl QueryPlanner for DeltaPlanner {
     async fn create_physical_plan(
         &self,
         logical_plan: &LogicalPlan,
-        session_state: &SessionState,
+        session_state: &dyn datafusion::catalog::Session,
     ) -> DataFusionResult<Arc<dyn ExecutionPlan>> {
         let planner = Arc::new(Box::new(DefaultPhysicalPlanner::with_extension_planners(
             vec![DeltaExtensionPlanner::new()],
@@ -95,7 +95,8 @@ impl ExtensionPlanner for DeltaExtensionPlanner {
         node: &dyn UserDefinedLogicalNode,
         logical_inputs: &[&LogicalPlan],
         physical_inputs: &[Arc<dyn ExecutionPlan>],
-        session_state: &SessionState,
+        session_state: &dyn datafusion::catalog::Session,
+        planning_ctx: &datafusion::logical_expr::physical_planning_context::PhysicalPlanningContext,
     ) -> DataFusionResult<Option<Arc<dyn ExecutionPlan>>> {
         for ext_planner in DELTA_EXTENSION_PLANNERS.iter() {
             if let Some(plan) = ext_planner
@@ -105,6 +106,7 @@ impl ExtensionPlanner for DeltaExtensionPlanner {
                     logical_inputs,
                     physical_inputs,
                     session_state,
+                    planning_ctx,
                 )
                 .await?
             {

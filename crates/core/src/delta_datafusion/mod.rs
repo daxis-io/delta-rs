@@ -45,7 +45,7 @@ use datafusion::execution::context::SessionContext;
 use datafusion::logical_expr::logical_plan::CreateExternalTable;
 use datafusion::logical_expr::utils::conjunction;
 use datafusion::logical_expr::{Expr, Extension, LogicalPlan};
-use datafusion::physical_optimizer::pruning::PruningPredicate;
+use datafusion::physical_optimizer::pruning::PruningPredicateBuilder;
 use datafusion::physical_plan::ExecutionPlan;
 use datafusion_proto::logical_plan::LogicalExtensionCodec;
 use datafusion_proto::physical_plan::PhysicalExtensionCodec;
@@ -271,7 +271,9 @@ pub(crate) fn files_matching_predicate<'a>(
         let df_schema = Arc::new(schema.clone().to_dfschema()?);
         let resolved = Expression::from(predicate).resolve(&session.state(), df_schema.clone())?;
         let expr = session.create_physical_expr(resolved, &df_schema)?;
-        let pruning_predicate = PruningPredicate::try_new(expr, schema)?;
+        let pruning_predicate = PruningPredicateBuilder::new()
+            .with_file_schema(schema)
+            .try_build(expr)?;
         let mask = pruning_predicate.prune(&log_data)?;
 
         Ok(Either::Left(log_data.into_iter().zip(mask).filter_map(
@@ -456,6 +458,7 @@ impl PhysicalExtensionCodec for DeltaPhysicalCodec {
         buf: &[u8],
         inputs: &[Arc<dyn ExecutionPlan>],
         _registry: &TaskContext,
+        _proto_converter: &dyn datafusion_proto::physical_plan::PhysicalProtoConverterExtension,
     ) -> Result<Arc<dyn ExecutionPlan>, DataFusionError> {
         let wire: DeltaScanWire = serde_json::from_reader(buf)
             .map_err(|_| DataFusionError::Internal("Unable to decode DeltaScan".to_string()))?;
@@ -467,9 +470,9 @@ impl PhysicalExtensionCodec for DeltaPhysicalCodec {
         &self,
         node: Arc<dyn ExecutionPlan>,
         buf: &mut Vec<u8>,
+        _proto_converter: &dyn datafusion_proto::physical_plan::PhysicalProtoConverterExtension,
     ) -> Result<(), DataFusionError> {
         let delta_scan = node
-            .as_any()
             .downcast_ref::<DeltaScan>()
             .ok_or_else(|| DataFusionError::Internal("Not a legacy delta scan!".to_string()))?;
 
@@ -519,7 +522,6 @@ impl LogicalExtensionCodec for DeltaLogicalCodec {
     ) -> Result<(), DataFusionError> {
         let scan = node
             .as_ref()
-            .as_any()
             .downcast_ref::<DeltaScanNext>()
             .ok_or_else(|| {
                 DataFusionError::Internal("Can't encode non-delta tables".to_string())
@@ -540,11 +542,14 @@ impl TableProviderFactory for DeltaTableFactory {
         ctx: &dyn Session,
         cmd: &CreateExternalTable,
     ) -> datafusion::error::Result<Arc<dyn TableProvider>> {
+        let [location] = cmd.locations.as_slice() else {
+            return datafusion::common::plan_err!("Delta tables require exactly one location");
+        };
         let table = if cmd.options.is_empty() {
-            let table_url = ensure_table_uri(&cmd.to_owned().location)?;
+            let table_url = ensure_table_uri(location)?;
             open_table(table_url).await?
         } else {
-            let table_url = ensure_table_uri(&cmd.to_owned().location)?;
+            let table_url = ensure_table_uri(location)?;
             open_table_with_storage_options(table_url, cmd.to_owned().options).await?
         };
         let table_uri = table.log_store().root_url().clone();
@@ -792,11 +797,7 @@ mod tests {
                 &ctx.task_ctx(),
             )
             .unwrap();
-        let decoded_provider = decoded
-            .as_ref()
-            .as_any()
-            .downcast_ref::<DeltaScanNext>()
-            .unwrap();
+        let decoded_provider = decoded.as_ref().downcast_ref::<DeltaScanNext>().unwrap();
 
         let serialized = serde_json::to_value(decoded_provider).unwrap();
         let decoded_file_ids = serialized
@@ -1233,11 +1234,14 @@ mod tests {
             .unwrap();
 
         let df = datafusion
-            .sql("select * from snapshot where id > 10000 and id < 20000")
+            // DF55 coerces mixed string/numeric comparisons to numeric. This
+            // regression exercises two string predicates and their empty result.
+            .sql("select * from snapshot where id > '10000' and id < '20000'")
             .await
             .unwrap();
 
-        df.collect().await.unwrap();
+        let batches = df.collect().await.unwrap();
+        assert_eq!(batches.iter().map(RecordBatch::num_rows).sum::<usize>(), 0);
     }
 
     // Run a query that filters out all files and sorts.
@@ -1303,6 +1307,7 @@ mod tests {
         assert_eq!(1, files.len());
         let object_store = table.object_store();
         let file_meta = object_store.head(&files[0]).await.unwrap();
+        #[allow(deprecated, reason = "exercise original native exact-range reader")]
         let file_reader = parquet::arrow::async_reader::ParquetObjectReader::new(
             object_store,
             file_meta.location.clone(),

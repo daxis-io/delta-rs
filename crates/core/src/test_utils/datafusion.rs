@@ -29,10 +29,6 @@ struct TestScalarUdf {
 }
 
 impl ScalarUDFImpl for TestScalarUdf {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn name(&self) -> &str {
         self.name
     }
@@ -81,6 +77,22 @@ impl WrapperSession {
 
 #[async_trait]
 impl DataFusionSession for WrapperSession {
+    fn catalog_list(&self) -> Arc<dyn datafusion::catalog::CatalogProviderList> {
+        DataFusionSession::catalog_list(&self.inner)
+    }
+
+    fn higher_order_functions(
+        &self,
+    ) -> &HashMap<String, Arc<datafusion::logical_expr::HigherOrderUDF>> {
+        DataFusionSession::higher_order_functions(&self.inner)
+    }
+
+    fn extension_type_registry(
+        &self,
+    ) -> &datafusion::logical_expr::registry::ExtensionTypeRegistryRef {
+        DataFusionSession::extension_type_registry(&self.inner)
+    }
+
     fn session_id(&self) -> &str {
         DataFusionSession::session_id(&self.inner)
     }

@@ -18,6 +18,7 @@ features = ["datafusion", "json"]
 deltalake-derive = { version = "1", path = "../derive" }
 
 delta_kernel.workspace = true
+delta_kernel_default_engine.workspace = true
 
 # arrow
 arrow = { workspace = true }
@@ -117,9 +118,9 @@ datafusion = [
 datafusion-ext = ["datafusion"]
 json = ["parquet/json"]
 python = ["arrow/pyarrow"]
-native-tls = ["delta_kernel/default-engine-native-tls"]
-rustls = ["delta_kernel/default-engine-rustls"]
-cloud = ["object_store/cloud", "dep:humantime"]
+native-tls = ["delta_kernel_default_engine/native-tls"]
+rustls = ["delta_kernel_default_engine/rustls"]
+cloud = ["object_store/cloud-base", "object_store/reqwest", "object_store/ring", "dep:humantime"]
 
 # enable caching some file I/O operations when scanning delta logs
 delta-cache = ["foyer", "tempfile", "url/serde"]

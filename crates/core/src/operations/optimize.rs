@@ -1256,7 +1256,7 @@ async fn build_compaction_plan(
     }
 
     // Prune merge bins with only 1 file, since they have no effect
-    for (_, (_, bins)) in operations.iter_mut() {
+    for (_, bins) in operations.values_mut() {
         bins.retain(|bin| {
             if bin.len() == 1 {
                 metrics.total_files_skipped += 1;
@@ -1541,7 +1541,6 @@ pub(super) mod zorder {
         use ::datafusion::prelude::SessionContext;
         use arrow_schema::DataType;
         use itertools::Itertools;
-        use std::any::Any;
 
         pub const ZORDER_UDF_NAME: &str = "zorder_key";
 
@@ -1570,10 +1569,6 @@ pub(super) mod zorder {
         pub struct ZOrderUDF;
 
         impl ScalarUDFImpl for ZOrderUDF {
-            fn as_any(&self) -> &dyn Any {
-                self
-            }
-
             fn name(&self) -> &str {
                 ZORDER_UDF_NAME
             }

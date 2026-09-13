@@ -7,7 +7,7 @@ use datafusion::common::scalar::ScalarValue;
 use datafusion::common::{Column, ToDFSchema};
 use datafusion::execution::context::SessionContext;
 use datafusion::logical_expr::Expr;
-use datafusion::physical_optimizer::pruning::{PruningPredicate, PruningStatistics};
+use datafusion::physical_optimizer::pruning::{PruningPredicateBuilder, PruningStatistics};
 
 use crate::delta_datafusion::{
     Expression, create_session, get_null_of_arrow_type, to_correct_scalar_value,
@@ -92,7 +92,9 @@ impl<'a> AddContainer<'a> {
         let df_schema = Arc::new(self.schema.clone().to_dfschema()?);
         let resolved = Expression::from(predicate).resolve(&session.state(), df_schema.clone())?;
         let expr = session.create_physical_expr(resolved, df_schema.as_ref())?;
-        let pruning_predicate = PruningPredicate::try_new(expr, self.schema.clone())?;
+        let pruning_predicate = PruningPredicateBuilder::new()
+            .with_file_schema(self.schema.clone())
+            .try_build(expr)?;
         Ok(self
             .inner
             .iter()
@@ -161,7 +163,7 @@ impl PruningStatistics for AddContainer<'_> {
     /// as an `Option<UInt64Array>`.
     ///
     /// Note: the returned array must contain `num_containers()` rows
-    fn row_counts(&self, _column: &Column) -> Option<ArrayRef> {
+    fn row_counts(&self) -> Option<ArrayRef> {
         let values = self.inner.iter().map(|add| {
             if let Ok(Some(statistics)) = add.get_stats() {
                 ScalarValue::UInt64(Some(statistics.num_records as u64))
@@ -210,8 +212,8 @@ impl PruningStatistics for EagerSnapshot {
     /// as an `Option<UInt64Array>`.
     ///
     /// Note: the returned array must contain `num_containers()` rows
-    fn row_counts(&self, column: &Column) -> Option<ArrayRef> {
-        self.log_data().row_counts(column)
+    fn row_counts(&self) -> Option<ArrayRef> {
+        self.log_data().row_counts()
     }
 
     // This function is required since DataFusion 35.0, but is implemented as a no-op

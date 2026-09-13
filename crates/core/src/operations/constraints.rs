@@ -157,7 +157,7 @@ impl std::future::IntoFuture for ConstraintBuilder {
 
             // Create an Hashmap of the name to the processed expression
             let mut constraints_sql_mapper = HashMap::with_capacity(this.check_constraints.len());
-            for (name, _) in configuration_key_mapper.iter() {
+            for name in configuration_key_mapper.keys() {
                 let converted_expr = into_expr(
                     this.check_constraints[name].clone(),
                     &schema,

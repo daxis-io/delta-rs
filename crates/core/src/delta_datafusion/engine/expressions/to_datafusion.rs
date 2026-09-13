@@ -52,11 +52,15 @@ pub(crate) fn to_datafusion_expr(expr: &Expression, output_type: &DataType) -> D
                 .try_collect()?;
             match expr.op {
                 VariadicExpressionOp::Coalesce => Ok(coalesce(exprs)),
+                VariadicExpressionOp::Array => {
+                    not_impl_err!("Kernel array expressions are not yet supported")
+                }
             }
         }
         Expression::Opaque(_) => not_impl_err!("Opaque expressions are not yet supported"),
         Expression::Unknown(_) => not_impl_err!("Unknown expressions are not yet supported"),
-        Expression::Transform(_) => not_impl_err!("Transform expressions are not yet supported"),
+        Expression::StructPatch(_) => not_impl_err!("Transform expressions are not yet supported"),
+        Expression::Cast(_) => not_impl_err!("Cast expressions are not yet supported"),
         Expression::ParseJson(_) => not_impl_err!("ParseJson expressions are not yet supported"),
         Expression::MapToStruct(_) => {
             not_impl_err!("MapToStruct expressions are not yet supported")
@@ -70,6 +74,9 @@ pub(crate) fn to_datafusion_expr(expr: &Expression, output_type: &DataType) -> D
 /// including primitive types, temporal types, structs, and null values.
 pub(crate) fn to_datafusion_scalar(scalar: &Scalar) -> DFResult<ScalarValue> {
     Ok(match scalar {
+        Scalar::IntervalYearMonth(_) | Scalar::IntervalDayTime(_) => {
+            return not_impl_err!("Kernel interval scalars are not yet supported");
+        }
         Scalar::Boolean(value) => ScalarValue::Boolean(Some(*value)),
         Scalar::String(value) => ScalarValue::Utf8(Some(value.clone())),
         Scalar::Byte(value) => ScalarValue::Int8(Some(*value)),
@@ -104,7 +111,7 @@ pub(crate) fn to_datafusion_scalar(scalar: &Scalar) -> DFResult<ScalarValue> {
                 .try_collect()?;
             fields
                 .into_iter()
-                .zip(values.into_iter())
+                .zip(values)
                 .fold(ScalarStructBuilder::new(), |builder, (field, value)| {
                     builder.with_scalar(field, value)
                 })
@@ -933,7 +940,7 @@ mod tests {
         );
 
         // Test error case: empty column name
-        let expr = Expression::Column(ColumnName::new::<&str>([]));
+        let expr = Expression::Column(ColumnName::new([] as [&str; 0]));
         assert!(to_datafusion_expr(&expr, &DataType::BOOLEAN).is_err());
     }
 }

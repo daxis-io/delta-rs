@@ -99,12 +99,15 @@ async fn test_update_predicate_left_in_data() -> DeltaResult<()> {
         .with_predicate(col("value").eq(lit(10)))
         .await?;
 
-    use parquet::arrow::async_reader::ParquetObjectReader;
     use parquet::arrow::async_reader::ParquetRecordBatchStreamBuilder;
 
     for pq in table.get_files_by_partitions(&[]).await? {
         let store = table.log_store().object_store(None);
-        let reader = ParquetObjectReader::new(store, pq);
+        #[allow(
+            deprecated,
+            reason = "exercise original native suffix/exact-range reader"
+        )]
+        let reader = parquet::arrow::async_reader::ParquetObjectReader::new(store, pq);
         let builder = ParquetRecordBatchStreamBuilder::new(reader).await?;
         let schema = builder.schema();
 

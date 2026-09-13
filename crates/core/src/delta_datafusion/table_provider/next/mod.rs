@@ -25,7 +25,6 @@
 //! - planning the physical data file reads based on Datafusion's abstractions
 //! - applying Delta features by transforming the physical data into the table's logical schema
 //!
-use std::any::Any;
 use std::collections::HashSet;
 use std::{borrow::Cow, sync::Arc};
 
@@ -473,10 +472,6 @@ impl DeltaScan {
 
 #[async_trait::async_trait]
 impl TableProvider for DeltaScan {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn schema(&self) -> SchemaRef {
         self.full_schema.clone()
     }
@@ -639,7 +634,7 @@ mod tests {
         },
         error::DataFusionError,
         logical_expr::dml::InsertOp,
-        physical_optimizer::pruning::PruningPredicate,
+        physical_optimizer::pruning::PruningPredicateBuilder,
         physical_plan::{ExecutionPlanVisitor, collect_partitioned, visit_execution_plan},
         prelude::{col, lit},
     };
@@ -659,8 +654,7 @@ mod tests {
         assert_batches_sorted_eq,
         delta_datafusion::{DeltaScanConfig, session::create_session},
         kernel::{
-            Action, DataType, EagerSnapshot, PrimitiveType, ProtocolInner, Snapshot, StructField,
-            StructType,
+            Action, DataType, EagerSnapshot, PrimitiveType, Snapshot, StructField, StructType,
         },
         logstore::get_actions,
         operations::create::CreateBuilder,
@@ -739,7 +733,6 @@ mod tests {
         ) -> Result<bool, DataFusionError> {
             let Some(scan_config) = datasource_exec
                 .data_source()
-                .as_any()
                 .downcast_ref::<FileScanConfig>()
             else {
                 return Ok(true);
@@ -759,11 +752,11 @@ mod tests {
         type Error = DataFusionError;
 
         fn pre_visit(&mut self, plan: &dyn ExecutionPlan) -> Result<bool, Self::Error> {
-            if let Some(delta_scan_exec) = plan.as_any().downcast_ref::<scan::DeltaScanExec>() {
+            if let Some(delta_scan_exec) = plan.downcast_ref::<scan::DeltaScanExec>() {
                 return self.pre_visit_delta_scan(delta_scan_exec);
             };
 
-            if let Some(datasource_exec) = plan.as_any().downcast_ref::<DataSourceExec>() {
+            if let Some(datasource_exec) = plan.downcast_ref::<DataSourceExec>() {
                 return self.pre_visit_data_source(datasource_exec);
             }
 
@@ -781,20 +774,16 @@ mod tests {
         type Error = DataFusionError;
 
         fn pre_visit(&mut self, plan: &dyn ExecutionPlan) -> Result<bool, Self::Error> {
-            let Some(datasource_exec) = plan.as_any().downcast_ref::<DataSourceExec>() else {
+            let Some(datasource_exec) = plan.downcast_ref::<DataSourceExec>() else {
                 return Ok(true);
             };
             let Some(scan_config) = datasource_exec
                 .data_source()
-                .as_any()
                 .downcast_ref::<FileScanConfig>()
             else {
                 return Ok(true);
             };
-            let Some(parquet_source) = scan_config
-                .file_source
-                .as_any()
-                .downcast_ref::<ParquetSource>()
+            let Some(parquet_source) = scan_config.file_source.downcast_ref::<ParquetSource>()
             else {
                 return Ok(true);
             };
@@ -802,10 +791,9 @@ mod tests {
                 return Ok(true);
             };
 
-            let pruning_predicate = PruningPredicate::try_new(
-                predicate.clone(),
-                parquet_source.table_schema().table_schema().clone(),
-            )?;
+            let pruning_predicate = PruningPredicateBuilder::new()
+                .with_file_schema(parquet_source.table_schema().table_schema().clone())
+                .try_build(predicate.clone())?;
             self.predicate = Some(predicate.to_string());
             self.pruning_predicate = Some(pruning_predicate.predicate_expr().to_string());
             Ok(false)
@@ -837,23 +825,6 @@ mod tests {
             vec![Arc::new(Int64Array::from(values))],
         )?;
         table.write(vec![batch]).await
-    }
-
-    async fn create_in_memory_id_table_with_reader_protocol(
-        min_reader_version: i32,
-    ) -> crate::DeltaResult<crate::DeltaTable> {
-        let schema = StructType::try_new(vec![StructField::new(
-            "id".to_string(),
-            DataType::Primitive(PrimitiveType::Long),
-            true,
-        )])?;
-        crate::DeltaTable::new_in_memory()
-            .create()
-            .with_columns(schema.fields().cloned())
-            .with_actions(vec![Action::Protocol(
-                ProtocolInner::new(min_reader_version, 2).as_kernel(),
-            )])
-            .await
     }
 
     async fn build_insert_input(

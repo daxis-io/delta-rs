@@ -8,14 +8,12 @@ use datafusion::execution::{
 use delta_kernel::engine::parse_json as arrow_parse_json;
 use delta_kernel::{
     EngineData, FileDataReadResultIterator, FileMeta, FilteredEngineData, JsonHandler,
-    ParquetHandler, PredicateRef,
-    engine::default::{
-        executor::tokio::{TokioBackgroundExecutor, TokioMultiThreadExecutor},
-        json::DefaultJsonHandler,
-        parquet::DefaultParquetHandler,
-    },
-    error::DeltaResult as KernelResult,
-    schema::SchemaRef,
+    ParquetHandler, PredicateRef, error::DeltaResult as KernelResult, schema::SchemaRef,
+};
+use delta_kernel_default_engine::{
+    executor::tokio::{TokioBackgroundExecutor, TokioMultiThreadExecutor},
+    json::DefaultJsonHandler,
+    parquet::DefaultParquetHandler,
 };
 use itertools::Itertools;
 use tokio::runtime::{Handle, RuntimeFlavor};
@@ -183,7 +181,7 @@ impl JsonHandler for DataFusionFileFormatHandler {
         path: &url::Url,
         data: Box<dyn Iterator<Item = KernelResult<FilteredEngineData>> + Send + '_>,
         overwrite: bool,
-    ) -> KernelResult<()> {
+    ) -> KernelResult<u64> {
         self.get_or_create_json(path.as_object_store_url())?
             .write_json_file(path, data, overwrite)
     }

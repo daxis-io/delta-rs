@@ -10,8 +10,8 @@ use delta_kernel::expressions::Scalar;
 use delta_kernel::table_properties::DataSkippingNumIndexedCols;
 use indexmap::IndexMap;
 use itertools::Itertools;
-use parquet::basic::LogicalType;
 use parquet::basic::Type;
+use parquet::basic::{ConvertedType, LogicalType};
 use parquet::file::metadata::ParquetMetaData;
 use parquet::schema::types::{ColumnDescriptor, SchemaDescriptor};
 use parquet::{
@@ -119,6 +119,15 @@ fn stats_from_file_metadata(
     )
 }
 
+// Legacy Parquet writers can encode DATE only in converted_type. Match the
+// selected Parquet schema decoder: explicit logical annotations take precedence.
+fn stats_logical_type(
+    logical: Option<&LogicalType>,
+    converted: ConvertedType,
+) -> Option<&LogicalType> {
+    logical.or_else(|| (converted == ConvertedType::DATE).then_some(&LogicalType::Date))
+}
+
 fn stats_from_metadata(
     partition_values: &IndexMap<String, Scalar>,
     schema_descriptor: Arc<SchemaDescriptor>,
@@ -201,6 +210,10 @@ fn stats_from_metadata(
     for idx in idx_to_iterate {
         let column_descr = schema_descriptor.column(idx);
 
+        let logical_type = stats_logical_type(
+            column_descr.logical_type_ref(),
+            column_descr.converted_type(),
+        );
         let column_path = column_descr.path();
         let column_path_parts = column_path.parts();
 
@@ -215,8 +228,7 @@ fn stats_from_metadata(
             .flat_map(|g| {
                 g.column(idx).statistics().into_iter().filter_map(|s| {
                     let is_binary = matches!(&column_descr.physical_type(), Type::BYTE_ARRAY)
-                        && matches!(column_descr.logical_type_ref(), Some(LogicalType::String))
-                            .not();
+                        && matches!(logical_type, Some(LogicalType::String)).not();
                     if is_binary {
                         warn!(
                             "Skipping column {} because it's a binary field.",
@@ -224,7 +236,7 @@ fn stats_from_metadata(
                         );
                         None
                     } else {
-                        Some(AggregatedStats::from((s, column_descr.logical_type_ref())))
+                        Some(AggregatedStats::from((s, logical_type)))
                     }
                 })
             })
@@ -298,7 +310,10 @@ impl StatsScalar {
                 let date = epoch_start + chrono::Duration::days(get_stat!(v) as i64);
                 Ok(Self::Date(date))
             }
-            (Statistics::Int32(v), Some(LogicalType::Decimal { scale, .. })) => {
+            (
+                Statistics::Int32(v),
+                Some(LogicalType::Decimal(parquet::basic::DecimalType { scale, .. })),
+            ) => {
                 let val = get_stat!(v) as f64 / 10.0_f64.powi(*scale);
                 // Spark serializes these as numbers
                 Ok(Self::Decimal {
@@ -308,7 +323,10 @@ impl StatsScalar {
             }
             (Statistics::Int32(v), _) => Ok(Self::Int32(get_stat!(v))),
             // Int64 can be timestamp, decimal, or integer
-            (Statistics::Int64(v), Some(LogicalType::Timestamp { unit, .. })) => {
+            (
+                Statistics::Int64(v),
+                Some(LogicalType::Timestamp(parquet::basic::TimestampType { unit, .. })),
+            ) => {
                 // For now, we assume timestamps are adjusted to UTC. Non-UTC timestamps
                 // are behind a feature gate in Delta:
                 // https://github.com/delta-io/delta/blob/master/PROTOCOL.md#timestamp-without-timezone-timestampntz
@@ -328,7 +346,10 @@ impl StatsScalar {
                 })?;
                 Ok(Self::Timestamp(timestamp.naive_utc()))
             }
-            (Statistics::Int64(v), Some(LogicalType::Decimal { scale, .. })) => {
+            (
+                Statistics::Int64(v),
+                Some(LogicalType::Decimal(parquet::basic::DecimalType { scale, .. })),
+            ) => {
                 let val = get_stat!(v) as f64 / 10.0_f64.powi(*scale);
                 // Spark serializes these as numbers
                 Ok(Self::Decimal {
@@ -362,7 +383,10 @@ impl StatsScalar {
                     }),
                 }
             }
-            (Statistics::FixedLenByteArray(v), Some(LogicalType::Decimal { scale, precision })) => {
+            (
+                Statistics::FixedLenByteArray(v),
+                Some(LogicalType::Decimal(parquet::basic::DecimalType { scale, precision })),
+            ) => {
                 let val = if use_min {
                     v.min_bytes_opt()
                 } else {
@@ -375,10 +399,7 @@ impl StatsScalar {
                 } else {
                     return Err(DeltaWriterError::StatsParsingFailed {
                         debug_value: format!("{val:?}"),
-                        logical_type: Some(LogicalType::Decimal {
-                            scale: *scale,
-                            precision: *precision,
-                        }),
+                        logical_type: Some(LogicalType::decimal(*scale, *precision)),
                     });
                 };
 
@@ -685,46 +706,64 @@ mod tests {
     }
 
     #[test]
+    fn test_legacy_date_statistics_annotation() {
+        let stats = simple_parquet_stat!(Statistics::Int32, 18628);
+        let integer = LogicalType::Integer(parquet::basic::IntType {
+            bit_width: 32,
+            is_signed: true,
+        });
+        for (logical, converted, expected) in [
+            (None, ConvertedType::DATE, json!("2021-01-01")),
+            (None, ConvertedType::NONE, json!(18628)),
+            (Some(&integer), ConvertedType::DATE, json!(18628)),
+        ] {
+            let aggregate = AggregatedStats::from((&stats, stats_logical_type(logical, converted)));
+            assert_eq!(Value::from(aggregate.min.unwrap()), expected);
+            assert_eq!(Value::from(aggregate.max.unwrap()), expected);
+        }
+    }
+
+    #[test]
     fn test_stats_scalar_serialization() {
         let cases = &[
             (
                 simple_parquet_stat!(Statistics::Boolean, true),
-                Some(LogicalType::Integer {
+                Some(LogicalType::Integer(parquet::basic::IntType {
                     bit_width: 1,
                     is_signed: true,
-                }),
+                })),
                 Value::Bool(true),
             ),
             (
                 simple_parquet_stat!(Statistics::Int32, 1),
-                Some(LogicalType::Integer {
+                Some(LogicalType::Integer(parquet::basic::IntType {
                     bit_width: 32,
                     is_signed: true,
-                }),
+                })),
                 Value::from(1),
             ),
             (
                 simple_parquet_stat!(Statistics::Int32, 1234),
-                Some(LogicalType::Decimal {
+                Some(LogicalType::Decimal(parquet::basic::DecimalType {
                     scale: 3,
                     precision: 4,
-                }),
+                })),
                 Value::from(1.234),
             ),
             (
                 simple_parquet_stat!(Statistics::Int32, 1234),
-                Some(LogicalType::Decimal {
+                Some(LogicalType::Decimal(parquet::basic::DecimalType {
                     scale: -1,
                     precision: 4,
-                }),
+                })),
                 Value::from(12340.0),
             ),
             (
                 simple_parquet_stat!(Statistics::Int32, 1234),
-                Some(LogicalType::Decimal {
+                Some(LogicalType::Decimal(parquet::basic::DecimalType {
                     scale: 0,
                     precision: 4,
-                }),
+                })),
                 Value::from(1234),
             ),
             (
@@ -734,50 +773,50 @@ mod tests {
             ),
             (
                 simple_parquet_stat!(Statistics::Int64, 1641040496789123456),
-                Some(LogicalType::Timestamp {
+                Some(LogicalType::Timestamp(parquet::basic::TimestampType {
                     is_adjusted_to_u_t_c: true,
                     unit: parquet::basic::TimeUnit::NANOS,
-                }),
+                })),
                 Value::from("2022-01-01T12:34:56.789123456Z"),
             ),
             (
                 simple_parquet_stat!(Statistics::Int64, 1641040496789123),
-                Some(LogicalType::Timestamp {
+                Some(LogicalType::Timestamp(parquet::basic::TimestampType {
                     is_adjusted_to_u_t_c: true,
                     unit: parquet::basic::TimeUnit::MICROS,
-                }),
+                })),
                 Value::from("2022-01-01T12:34:56.789123Z"),
             ),
             (
                 simple_parquet_stat!(Statistics::Int64, 1641040496789),
-                Some(LogicalType::Timestamp {
+                Some(LogicalType::Timestamp(parquet::basic::TimestampType {
                     is_adjusted_to_u_t_c: true,
                     unit: parquet::basic::TimeUnit::MILLIS,
-                }),
+                })),
                 Value::from("2022-01-01T12:34:56.789Z"),
             ),
             (
                 simple_parquet_stat!(Statistics::Int64, 1234),
-                Some(LogicalType::Decimal {
+                Some(LogicalType::Decimal(parquet::basic::DecimalType {
                     scale: 3,
                     precision: 4,
-                }),
+                })),
                 Value::from(1.234),
             ),
             (
                 simple_parquet_stat!(Statistics::Int64, 1234),
-                Some(LogicalType::Decimal {
+                Some(LogicalType::Decimal(parquet::basic::DecimalType {
                     scale: -1,
                     precision: 4,
-                }),
+                })),
                 Value::from(12340.0),
             ),
             (
                 simple_parquet_stat!(Statistics::Int64, 1234),
-                Some(LogicalType::Decimal {
+                Some(LogicalType::Decimal(parquet::basic::DecimalType {
                     scale: 0,
                     precision: 4,
-                }),
+                })),
                 Value::from(1234),
             ),
             (
@@ -800,10 +839,10 @@ mod tests {
                     Statistics::FixedLenByteArray,
                     FixedLenByteArray::from(1243124142314423i128.to_be_bytes().to_vec())
                 ),
-                Some(LogicalType::Decimal {
+                Some(LogicalType::Decimal(parquet::basic::DecimalType {
                     scale: 3,
                     precision: 16,
-                }),
+                })),
                 Value::from(1243124142314.423),
             ),
             (
@@ -811,10 +850,10 @@ mod tests {
                     Statistics::FixedLenByteArray,
                     FixedLenByteArray::from(vec![0, 39, 16])
                 ),
-                Some(LogicalType::Decimal {
+                Some(LogicalType::Decimal(parquet::basic::DecimalType {
                     scale: 3,
                     precision: 5,
-                }),
+                })),
                 Value::from(10.0),
             ),
             (
@@ -822,10 +861,10 @@ mod tests {
                     Statistics::FixedLenByteArray,
                     FixedLenByteArray::from(1234i128.to_be_bytes().to_vec())
                 ),
-                Some(LogicalType::Decimal {
+                Some(LogicalType::Decimal(parquet::basic::DecimalType {
                     scale: 0,
                     precision: 4,
-                }),
+                })),
                 Value::from(1234),
             ),
             (
@@ -835,10 +874,10 @@ mod tests {
                         75, 59, 76, 168, 90, 134, 196, 122, 9, 138, 34, 63, 255, 255, 255, 255
                     ])
                 ),
-                Some(LogicalType::Decimal {
+                Some(LogicalType::Decimal(parquet::basic::DecimalType {
                     scale: 6,
                     precision: 38,
-                }),
+                })),
                 Value::from(9.999999999999999e31),
             ),
             (
@@ -848,10 +887,10 @@ mod tests {
                         180, 196, 179, 87, 165, 121, 59, 133, 246, 117, 221, 192, 0, 0, 0, 1
                     ])
                 ),
-                Some(LogicalType::Decimal {
+                Some(LogicalType::Decimal(parquet::basic::DecimalType {
                     scale: 6,
                     precision: 38,
-                }),
+                })),
                 Value::from(-9.999999999999999e31),
             ),
             (

@@ -119,6 +119,7 @@ impl ScalarExt for Scalar {
             Self::Struct(_) => self.to_string(),
             Self::Array(_) => self.to_string(),
             Self::Map(_) => self.to_string(),
+            Self::IntervalYearMonth(_) | Self::IntervalDayTime(_) => self.to_string(),
         }
     }
 
@@ -315,6 +316,9 @@ impl ScalarExt for Scalar {
     /// Serializes this scalar as a serde_json::Value.
     fn to_json(&self) -> serde_json::Value {
         match self {
+            Self::IntervalYearMonth(_) | Self::IntervalDayTime(_) => {
+                Value::String(self.to_string())
+            }
             Self::String(s) => Value::String(s.to_owned()),
             Self::Byte(b) => Value::Number(serde_json::Number::from(*b)),
             Self::Short(s) => Value::Number(serde_json::Number::from(*s)),

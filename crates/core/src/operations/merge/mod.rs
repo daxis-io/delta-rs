@@ -33,7 +33,7 @@ use std::ops::Deref;
 use std::sync::Arc;
 use std::time::Instant;
 
-use arrow_schema::{DataType, Field, SchemaBuilder};
+use arrow_schema::{DataType, SchemaBuilder};
 use async_trait::async_trait;
 use datafusion::catalog::Session;
 use datafusion::common::tree_node::{Transformed, TreeNode};
@@ -717,7 +717,8 @@ impl ExtensionPlanner for MergeMetricExtensionPlanner {
         node: &dyn UserDefinedLogicalNode,
         _logical_inputs: &[&LogicalPlan],
         physical_inputs: &[Arc<dyn ExecutionPlan>],
-        session_state: &SessionState,
+        session_state: &dyn datafusion::catalog::Session,
+        planning_ctx: &datafusion::logical_expr::physical_planning_context::PhysicalPlanningContext,
     ) -> DataFusionResult<Option<Arc<dyn ExecutionPlan>>> {
         if let Some(metric_observer) = node.as_any().downcast_ref::<MetricObserver>() {
             if metric_observer.id.eq(SOURCE_COUNT_ID) {
@@ -794,7 +795,12 @@ impl ExtensionPlanner for MergeMetricExtensionPlanner {
             let schema = validation.input.schema();
             return Ok(Some(Arc::new(MergeValidationExec::new(
                 physical_inputs.first().unwrap().clone(),
-                planner.create_physical_expr(&validation.file_expr, schema, session_state)?,
+                planner.create_physical_expr(
+                    &validation.file_expr,
+                    schema,
+                    session_state,
+                    planning_ctx,
+                )?,
                 Arc::clone(&validation.file_column),
                 Arc::clone(&validation.row_ordinal_column),
             ))));
@@ -808,7 +814,7 @@ impl ExtensionPlanner for MergeMetricExtensionPlanner {
             return Ok(Some(Arc::new(MergeBarrierExec::new(
                 physical_inputs.first().unwrap().clone(),
                 barrier.file_column.clone(),
-                planner.create_physical_expr(&barrier.expr, schema, session_state)?,
+                planner.create_physical_expr(&barrier.expr, schema, session_state, planning_ctx)?,
             ))));
         }
 
@@ -1525,7 +1531,8 @@ async fn execute(
                             ScalarValue::Utf8(Some("update_preimage".into())),
                             ScalarValue::Utf8(Some("update_postimage".into())),
                         ],
-                        &DataType::List(Field::new("element", DataType::Utf8, false).into()),
+                        // new_list takes the element type; unnest must yield Utf8.
+                        &DataType::Utf8,
                         true,
                     ))),
                 )
@@ -1600,7 +1607,6 @@ async fn execute(
     metrics.num_target_files_added = actions.len();
 
     let survivors = barrier
-        .as_any()
         .downcast_ref::<MergeBarrierExec>()
         .unwrap()
         .survivors();
@@ -1762,7 +1768,9 @@ fn remove_table_alias(expr: Expr, table_alias: &str) -> Expr {
 
 fn normalize_target_subset_filter(target_schema: DFSchemaRef, expr: Expr) -> DeltaResult<Expr> {
     let expr = coerce_predicate_literals(expr, target_schema.as_ref())?;
-    let simplify_context = SimplifyContext::default().with_schema(target_schema);
+    let simplify_context = SimplifyContext::builder()
+        .with_schema(target_schema)
+        .build();
     let simplifier = ExprSimplifier::new(simplify_context).with_max_cycles(10);
     Ok(simplifier.simplify(expr)?)
 }
@@ -2456,9 +2464,9 @@ mod tests {
         );
     }
 
-    fn retained_row_index_delta_scan_child<'a>(
-        plan: &'a Arc<dyn ExecutionPlan>,
-    ) -> &'a Arc<dyn ExecutionPlan> {
+    fn retained_row_index_delta_scan_child(
+        plan: &Arc<dyn ExecutionPlan>,
+    ) -> &Arc<dyn ExecutionPlan> {
         let mut scan_children = Vec::new();
         collect_retained_row_index_scan_inputs(plan, &mut scan_children);
 

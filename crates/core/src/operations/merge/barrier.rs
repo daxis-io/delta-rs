@@ -68,12 +68,19 @@ impl MergeBarrierExec {
 }
 
 impl ExecutionPlan for MergeBarrierExec {
-    fn name(&self) -> &str {
-        Self::static_name()
+    fn apply_expressions(
+        &self,
+        f: &mut dyn FnMut(
+            &Arc<dyn datafusion::physical_expr::PhysicalExpr>,
+        ) -> datafusion::common::Result<
+            datafusion::common::tree_node::TreeNodeRecursion,
+        >,
+    ) -> datafusion::common::Result<datafusion::common::tree_node::TreeNodeRecursion> {
+        f(&self.expr)
     }
 
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
+    fn name(&self) -> &str {
+        Self::static_name()
     }
 
     fn schema(&self) -> arrow_schema::SchemaRef {
@@ -85,7 +92,7 @@ impl ExecutionPlan for MergeBarrierExec {
     }
 
     fn required_input_distribution(&self) -> Vec<Distribution> {
-        vec![Distribution::HashPartitioned(vec![self.expr.clone()]); 1]
+        vec![Distribution::KeyPartitioned(vec![self.expr.clone()]); 1]
     }
 
     fn children(&self) -> Vec<&Arc<dyn ExecutionPlan>> {
@@ -435,11 +442,11 @@ impl UserDefinedLogicalNodeCore for MergeBarrier {
     }
 }
 
-pub(crate) fn find_node<T: 'static>(
+pub(crate) fn find_node<T: ExecutionPlan + 'static>(
     parent: &Arc<dyn ExecutionPlan>,
 ) -> Option<Arc<dyn ExecutionPlan>> {
     //! Used to locate a Node::<T> after the planner converts the logical node
-    if parent.as_any().downcast_ref::<T>().is_some() {
+    if parent.downcast_ref::<T>().is_some() {
         return Some(parent.to_owned());
     }
 

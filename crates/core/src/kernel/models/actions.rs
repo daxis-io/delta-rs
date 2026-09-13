@@ -197,8 +197,11 @@ pub(crate) fn contains_variant<'a>(mut fields: impl Iterator<Item = &'a StructFi
 pub(crate) trait ProtocolExt {
     fn reader_features_set(&self) -> Option<HashSet<TableFeature>>;
     fn writer_features_set(&self) -> Option<HashSet<TableFeature>>;
-    fn append_reader_features(self, reader_features: &[TableFeature]) -> Protocol;
-    fn append_writer_features(self, writer_features: &[TableFeature]) -> Protocol;
+    fn append_features(
+        self,
+        reader_features: &[TableFeature],
+        writer_features: &[TableFeature],
+    ) -> DeltaResult<Protocol>;
     fn move_table_properties_into_features(
         self,
         configuration: &HashMap<String, String>,
@@ -222,16 +225,17 @@ impl ProtocolExt for Protocol {
             .map(|features| features.iter().cloned().collect())
     }
 
-    fn append_reader_features(self, reader_features: &[TableFeature]) -> Protocol {
-        let mut inner = ProtocolInner::from_kernel(&self);
-        inner = inner.append_reader_features(reader_features.iter().cloned());
-        inner.as_kernel()
-    }
-
-    fn append_writer_features(self, writer_features: &[TableFeature]) -> Protocol {
-        let mut inner = ProtocolInner::from_kernel(&self);
-        inner = inner.append_writer_features(writer_features.iter().cloned());
-        inner.as_kernel()
+    fn append_features(
+        self,
+        reader_features: &[TableFeature],
+        writer_features: &[TableFeature],
+    ) -> DeltaResult<Protocol> {
+        // Kernel validates reader/writer symmetry on construction. Finish both
+        // halves of the existing mutation before converting the protocol.
+        ProtocolInner::from_kernel(&self)
+            .append_reader_features(reader_features.iter().cloned())
+            .append_writer_features(writer_features.iter().cloned())
+            .try_as_kernel()
     }
 
     fn move_table_properties_into_features(
@@ -256,7 +260,9 @@ impl ProtocolExt for Protocol {
     ) -> DeltaResult<Protocol> {
         let mut inner = ProtocolInner::from_kernel(&self);
         inner = inner.apply_properties_to_protocol(new_properties, raise_if_not_exists)?;
-        Ok(inner.as_kernel())
+        // Version 3/7 require present feature arrays, including empty arrays.
+        inner = inner.move_table_properties_into_features(new_properties);
+        inner.try_as_kernel()
     }
 }
 
@@ -312,6 +318,10 @@ impl ProtocolInner {
     pub(crate) fn from_kernel(value: &Protocol) -> ProtocolInner {
         // this ugliness is a stop-gap until we resolve: https://github.com/delta-io/delta-kernel-rs/issues/1055
         serde_json::from_value(serde_json::to_value(value).unwrap()).unwrap()
+    }
+
+    fn try_as_kernel(&self) -> DeltaResult<Protocol> {
+        Ok(serde_json::from_value(serde_json::to_value(self)?)?)
     }
 
     pub(crate) fn as_kernel(&self) -> Protocol {
@@ -765,7 +775,7 @@ impl TryFrom<&TableFeatures> for TableFeature {
     type Error = strum::ParseError;
 
     fn try_from(value: &TableFeatures) -> Result<Self, Self::Error> {
-        TableFeature::try_from(value.as_ref())
+        Ok(TableFeature::from(value.as_ref()))
     }
 }
 

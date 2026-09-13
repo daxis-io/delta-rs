@@ -12,7 +12,12 @@ use futures::TryStreamExt;
 use futures::future::{self, BoxFuture};
 use indexmap::IndexMap;
 use itertools::Itertools;
-use parquet::arrow::async_reader::{ParquetObjectReader, ParquetRecordBatchStreamBuilder};
+#[allow(
+    deprecated,
+    reason = "preserve pinned native exact-range and batched Parquet reader behavior"
+)]
+use parquet::arrow::async_reader::ParquetObjectReader;
+use parquet::arrow::async_reader::ParquetRecordBatchStreamBuilder;
 use parquet::errors::ParquetError;
 use percent_encoding::percent_decode_str;
 use tracing::debug;
@@ -359,6 +364,10 @@ impl ConvertToDeltaBuilder {
                 subpath = iter.next();
             }
 
+            #[allow(
+                deprecated,
+                reason = "preserve native exact metadata ranges without read-ahead"
+            )]
             let object_reader =
                 ParquetObjectReader::new(object_store.clone(), file.location.clone())
                     .with_file_size(file.size);
@@ -368,7 +377,7 @@ impl ConvertToDeltaBuilder {
             // Fetch the stats
             let parquet_metadata = batch_builder.metadata();
             let stats = stats_from_parquet_metadata(
-                &IndexMap::from_iter(partition_values.clone().into_iter()),
+                &IndexMap::from_iter(partition_values.clone()),
                 parquet_metadata.as_ref(),
                 num_indexed_cols,
                 &stats_columns,
@@ -430,7 +439,7 @@ impl ConvertToDeltaBuilder {
         let mut builder = CreateBuilder::new()
             .with_log_store(self.log_store().clone())
             .with_columns(schema_fields.into_iter().cloned())
-            .with_partition_columns(partition_columns.into_iter())
+            .with_partition_columns(partition_columns)
             .with_actions(actions)
             .with_save_mode(self.mode)
             .with_configuration(self.configuration)

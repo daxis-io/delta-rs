@@ -13,7 +13,6 @@ use indexmap::IndexMap;
 use object_store::buffered::BufWriter;
 use object_store::path::Path;
 use parquet::arrow::AsyncArrowWriter;
-use parquet::arrow::async_writer::ParquetObjectWriter;
 use parquet::basic::Compression;
 use parquet::file::properties::WriterProperties;
 use tokio::task::JoinSet;
@@ -71,7 +70,7 @@ fn get_max_concurrency_tasks() -> usize {
 /// Upload a parquet file to object store and return metadata for creating an Add action
 #[instrument(skip(arrow_writer), fields(rows = 0, size = 0))]
 async fn upload_parquet_file(
-    mut arrow_writer: AsyncArrowWriter<ParquetObjectWriter>,
+    mut arrow_writer: AsyncArrowWriter<BufWriter>,
     path: Path,
 ) -> DeltaResult<(Path, usize, ParquetMetaData)> {
     let metadata = arrow_writer.finish().await?;
@@ -340,21 +339,19 @@ impl PartitionWriterConfig {
 
 enum LazyArrowWriter {
     Initialized(Path, ObjectStoreRef, PartitionWriterConfig),
-    Writing(Path, AsyncArrowWriter<ParquetObjectWriter>),
+    Writing(Path, AsyncArrowWriter<BufWriter>),
 }
 
 impl LazyArrowWriter {
     async fn write_batch(&mut self, batch: &RecordBatch) -> DeltaResult<()> {
         match self {
             LazyArrowWriter::Initialized(path, object_store, config) => {
-                let writer = ParquetObjectWriter::from_buf_writer(
-                    BufWriter::with_capacity(
-                        object_store.clone(),
-                        path.clone(),
-                        upload_part_size(),
-                    )
-                    .with_max_concurrency(config.max_concurrency_tasks),
-                );
+                let writer = BufWriter::with_capacity(
+                    object_store.clone(),
+                    path.clone(),
+                    upload_part_size(),
+                )
+                .with_max_concurrency(config.max_concurrency_tasks);
                 let mut arrow_writer = AsyncArrowWriter::try_new(
                     writer,
                     config.file_schema.clone(),

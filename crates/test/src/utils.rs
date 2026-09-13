@@ -114,7 +114,7 @@ impl IntegrationContext {
 
     pub fn table_builder(&self, table: TestTables) -> DeltaTableBuilder {
         let name = table.as_name();
-        let table_uri = format!("{}/{}", self.root_uri(), &name);
+        let table_uri = format!("{}/{}", self.root_uri(), name);
         let table_url = url::Url::parse(&table_uri).unwrap();
         DeltaTableBuilder::from_url(table_url)
             .unwrap()

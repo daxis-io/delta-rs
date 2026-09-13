@@ -5,11 +5,12 @@ use dashmap::DashMap;
 use dashmap::mapref::one::Ref;
 use datafusion::execution::TaskContext;
 use datafusion::execution::object_store::{ObjectStoreRegistry, ObjectStoreUrl};
-use delta_kernel::engine::default::executor::tokio::{
+use delta_kernel::Engine;
+use delta_kernel::{DeltaResult, Error as DeltaError, FileMeta, FileSlice, StorageHandler};
+use delta_kernel_default_engine::DefaultEngine;
+use delta_kernel_default_engine::executor::tokio::{
     TokioBackgroundExecutor, TokioMultiThreadExecutor,
 };
-use delta_kernel::engine::default::filesystem::ObjectStoreStorageHandler;
-use delta_kernel::{DeltaResult, Error as DeltaError, FileMeta, FileSlice, StorageHandler};
 use itertools::Itertools;
 use tokio::runtime::{Handle, RuntimeFlavor};
 use url::Url;
@@ -51,14 +52,14 @@ impl DataFusionStorageHandler {
             .map_err(DeltaError::generic_err)?;
 
         let handler: Arc<dyn StorageHandler> = match self.handle.runtime_flavor() {
-            RuntimeFlavor::MultiThread => Arc::new(ObjectStoreStorageHandler::new(
-                store,
-                Arc::new(TokioMultiThreadExecutor::new(self.handle.clone())),
-            )),
-            RuntimeFlavor::CurrentThread => Arc::new(ObjectStoreStorageHandler::new(
-                store,
-                Arc::new(TokioBackgroundExecutor::new()),
-            )),
+            RuntimeFlavor::MultiThread => DefaultEngine::builder(store)
+                .with_task_executor(Arc::new(TokioMultiThreadExecutor::new(self.handle.clone())))
+                .build()
+                .storage_handler(),
+            RuntimeFlavor::CurrentThread => DefaultEngine::builder(store)
+                .with_task_executor(Arc::new(TokioBackgroundExecutor::new()))
+                .build()
+                .storage_handler(),
             _ => panic!("unsupported runtime flavor"),
         };
 
@@ -68,6 +69,9 @@ impl DataFusionStorageHandler {
 }
 
 impl StorageHandler for DataFusionStorageHandler {
+    fn delete(&self, path: &Url) -> DeltaResult<()> {
+        self.get_or_create(path.as_object_store_url())?.delete(path)
+    }
     fn list_from(
         &self,
         path: &Url,

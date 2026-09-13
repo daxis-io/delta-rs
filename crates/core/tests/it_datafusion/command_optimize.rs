@@ -28,6 +28,10 @@ use deltalake_core::{DeltaTable, PartitionFilter, Path, open_table};
 use futures::TryStreamExt;
 use object_store::ObjectStoreExt as _;
 use parquet::arrow::ParquetRecordBatchStreamBuilder;
+#[allow(
+    deprecated,
+    reason = "preserve exact range and batched reads on the pinned native reader"
+)]
 use parquet::arrow::async_reader::ParquetObjectReader;
 use parquet::basic::Compression;
 use parquet::file::properties::WriterProperties;
@@ -1979,6 +1983,10 @@ async fn read_parquet_file(
     object_store: ObjectStoreRef,
 ) -> Result<RecordBatch, Box<dyn Error>> {
     let file = object_store.head(path).await?;
+    #[allow(
+        deprecated,
+        reason = "preserve exact range and batched reads on the pinned native reader"
+    )]
     let file_reader =
         ParquetObjectReader::new(object_store, path.clone()).with_file_size(file.size);
     let batches = ParquetRecordBatchStreamBuilder::new(file_reader)
@@ -1994,6 +2002,10 @@ async fn read_parquet_metadata(
     object_store: ObjectStoreRef,
 ) -> Result<parquet::file::metadata::ParquetMetaData, Box<dyn Error>> {
     let file = object_store.head(path).await?;
+    #[allow(
+        deprecated,
+        reason = "preserve exact range and batched reads on the pinned native reader"
+    )]
     let file_reader =
         ParquetObjectReader::new(object_store, path.clone()).with_file_size(file.size);
     let builder = ParquetRecordBatchStreamBuilder::new(file_reader).await?;

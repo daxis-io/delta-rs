@@ -128,28 +128,35 @@ fn build_kernel_scan(
     predicate: Option<PredicateRef>,
     stats_materialization: Option<&FileStatsMaterialization>,
 ) -> DeltaResult<KernelScan> {
-    let mut builder = KernelScanBuilder::new(snapshot)
-        .with_schema_opt(schema)
-        .with_predicate(predicate);
+    let mut builder = KernelScanBuilder::new(snapshot).with_schema_opt(schema);
 
     if let Some(stats_materialization) = stats_materialization {
-        builder = with_kernel_stats_output(builder, stats_materialization);
+        builder = with_kernel_stats_output(builder, stats_materialization, predicate.as_ref());
     }
 
-    Ok(builder.build()?)
+    Ok(builder.with_predicate(predicate).build()?)
 }
 
 fn with_kernel_stats_output(
     builder: KernelScanBuilder,
     materialization: &FileStatsMaterialization,
+    predicate: Option<&PredicateRef>,
 ) -> KernelScanBuilder {
     match materialization.stats_source_policy() {
-        StatsSourcePolicy::None => builder.with_skip_stats(true),
+        StatsSourcePolicy::None => builder.with_stats(delta_kernel::scan::StatsOptions::none()),
         StatsSourcePolicy::ParsedWithJsonFallback => match materialization.stats_projection() {
-            StatsProjection::None => builder.with_skip_stats(true),
-            StatsProjection::Full => builder.include_all_stats_columns(),
-            StatsProjection::PredicateColumns(columns) => {
-                builder.with_stats_columns(columns.iter().cloned().collect())
+            StatsProjection::None => builder.with_stats(delta_kernel::scan::StatsOptions::none()),
+            StatsProjection::Full => builder.with_stats(delta_kernel::scan::StatsOptions::all()),
+            StatsProjection::PredicateColumns(_) => {
+                // StatsProjection names are physical for retained stats extraction.
+                // Kernel's struct_columns API accepts logical predicate names and
+                // owns column mapping and partition/non-stat column filtering.
+                let columns = predicate
+                    .into_iter()
+                    .flat_map(|predicate| predicate.references())
+                    .cloned()
+                    .collect();
+                builder.with_stats(delta_kernel::scan::StatsOptions::struct_columns(columns))
             }
             // The kernel API has no explicit numRecords only stats output mode. Use the
             // default scan output and materialize the row count schema when needed.
@@ -218,6 +225,31 @@ mod tests {
             &StatsProjection::PredicateColumns([ColumnName::new(["value"])].into())
         );
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn scan_builder_maps_logical_stats_request_to_physical_retained_projection()
+    -> DeltaResult<()> {
+        let mut table =
+            crate::test_utils::open_fs_path("../test/tests/data/table_with_column_mapping");
+        table.load().await?;
+        let snapshot =
+            super::super::Snapshot::try_new(table.log_store().as_ref(), Default::default(), None)
+                .await?;
+        let predicate: PredicateRef = Arc::new(
+            Expression::column(["Super Name"]).eq(Scalar::String("Anthony Johnson".into())),
+        );
+        let scan = snapshot.scan_builder().with_predicate(predicate).build()?;
+        assert_eq!(
+            scan.stats_materialization().stats_projection(),
+            &StatsProjection::PredicateColumns(
+                [ColumnName::new([
+                    "col-3877fd94-0973-4941-ac6b-646849a1ff65"
+                ]),]
+                .into()
+            ),
+        );
         Ok(())
     }
 

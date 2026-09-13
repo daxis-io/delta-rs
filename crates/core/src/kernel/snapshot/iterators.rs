@@ -351,7 +351,9 @@ fn ceil_datetime(v: i64, ratio: i64) -> i64 {
     if remainder == 0 {
         // if nanoseconds precision remainder is 0, we assume it was truncated
         // else we use the exact stats
-        ((v as f64 / ratio as f64).floor() as i64 + 1) * ratio
+        // The value is already an exact millisecond. Saturation preserves a
+        // conservative upper bound when the following millisecond exceeds i64.
+        v.saturating_add(ratio)
     } else {
         v
     }
@@ -721,6 +723,41 @@ mod tests {
         assert_eq!(ceil_datetime(1609459200000000, 1000000), 1609459201000000);
         assert_eq!(ceil_datetime(1609459200000123, 1000000), 1609459200000123);
         assert_eq!(ceil_datetime(0, 1000000), 1000000);
+    }
+
+    #[test]
+    fn timestamp_stats_ceiling_preserves_upper_bounds_without_overflow() {
+        for ratio in [1_000, 1_000_000] {
+            let last_exact = i64::MAX - i64::MAX % ratio;
+            assert_eq!(ceil_datetime(last_exact, ratio), i64::MAX);
+            assert_eq!(ceil_datetime(i64::MAX, ratio), i64::MAX);
+            assert_eq!(ceil_datetime(-ratio, ratio), 0);
+            assert_eq!(ceil_datetime(-ratio - 1, ratio), -ratio - 1);
+            assert_eq!(ceil_datetime(i64::MIN, ratio), i64::MIN);
+        }
+    }
+
+    #[cfg(feature = "nanosecond-timestamps")]
+    #[test]
+    fn nested_nanos_maximum_stats_stay_conservative_at_i64_boundary() {
+        use delta_kernel::expressions::StructData;
+        use delta_kernel::schema::{DataType, StructField};
+        let exact = 9_223_372_036_854_000_000;
+        let value = Scalar::Struct(
+            StructData::try_new(
+                vec![StructField::new("ts", DataType::TIMESTAMP_NANOS, true)],
+                vec![Scalar::TimestampNanos(exact)],
+            )
+            .unwrap(),
+        );
+        let Scalar::Struct(rounded) = round_ms_datetimes(value, &ceil_datetime) else {
+            panic!("nested scalar preserved");
+        };
+        assert_eq!(rounded.values()[0], Scalar::TimestampNanos(i64::MAX));
+        let Scalar::TimestampNanos(upper) = &rounded.values()[0] else {
+            panic!("nanos scalar preserved");
+        };
+        assert!(*upper >= exact);
     }
 
     #[test]

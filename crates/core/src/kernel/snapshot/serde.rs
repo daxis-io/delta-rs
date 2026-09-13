@@ -312,7 +312,7 @@ impl<'de> Visitor<'de> for SnapshotVisitor {
         let snapshot = KernelSnapshot::new(log_segment, table_configuration);
 
         Ok(Snapshot {
-            inner: Arc::new(snapshot),
+            inner: Arc::new(snapshot.map_err(serde::de::Error::custom)?),
             config,
             materialized_files: materialized_files
                 .map(|value| value.into_materialized().map_err(de::Error::custom))

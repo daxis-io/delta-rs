@@ -129,7 +129,9 @@ pub fn create_partition_values<F: FileAction>(
                 range: None,
                 statistics: None,
                 ordering: None,
-                extensions: None,
+                extensions: Default::default(),
+                arrow_schema: None,
+                table_reference: None,
                 metadata_size_hint: None,
             };
 

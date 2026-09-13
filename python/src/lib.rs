@@ -70,7 +70,6 @@ use schema::PySchema;
 use serde_json::{Map, Value};
 use std::cmp::min;
 use std::collections::{HashMap, HashSet};
-use std::ffi::CString;
 use std::future::IntoFuture;
 use std::num::NonZeroU64;
 use std::str::FromStr;
@@ -2180,7 +2179,6 @@ Install datafusion=={required}.* (matching major) to use DataFusion SessionConte
         }
 
         let handle = rt().handle();
-        let name = CString::new("datafusion_table_provider").unwrap();
         let table = self.with_table(|t| Ok(t.clone()))?;
 
         let log_store = table.log_store();
@@ -2208,7 +2206,7 @@ Install datafusion=={required}.* (matching major) to use DataFusion SessionConte
             None,
         );
 
-        PyCapsule::new(py, provider, Some(name.clone()))
+        PyCapsule::new_with_value(py, provider, c"datafusion_table_provider")
     }
 }
 
@@ -2280,7 +2278,7 @@ fn set_writer_properties(writer_properties: PyWriterProperties) -> DeltaResult<W
                 properties = properties.set_bloom_filter_fpp(bloom_filter_fpp);
             }
             if let Some(bloom_filter_ndv) = bloom_filter_properties.ndv {
-                properties = properties.set_bloom_filter_ndv(bloom_filter_ndv);
+                properties = properties.set_bloom_filter_max_ndv(bloom_filter_ndv);
             }
         }
     }
@@ -2328,7 +2326,7 @@ fn set_writer_properties(writer_properties: PyWriterProperties) -> DeltaResult<W
                     }
                     if let Some(bloom_filter_ndv) = bloom_filter_properties.ndv {
                         properties = properties
-                            .set_column_bloom_filter_ndv(column_name.into(), bloom_filter_ndv);
+                            .set_column_bloom_filter_max_ndv(column_name.into(), bloom_filter_ndv);
                     }
                 }
             }
@@ -2427,6 +2425,11 @@ fn scalar_to_py<'py>(value: &Scalar, py_date: &Bound<'py, PyAny>) -> PyResult<Bo
             date.into_py_any(py)?
         }
         Decimal(_) => value.serialize().into_py_any(py)?,
+        IntervalYearMonth(_) | IntervalDayTime(_) => {
+            return Err(pyo3::exceptions::PyNotImplementedError::new_err(
+                "Kernel interval scalars are not supported by the Python dataset expression bridge",
+            ));
+        }
         Struct(data) => {
             let py_struct = PyDict::new(py);
             for (field, value) in data.fields().iter().zip(data.values().iter()) {

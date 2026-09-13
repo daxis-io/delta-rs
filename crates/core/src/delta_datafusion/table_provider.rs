@@ -1,4 +1,3 @@
-use std::any::Any;
 use std::fmt;
 use std::sync::Arc;
 
@@ -565,12 +564,19 @@ impl DisplayAs for DeltaScan {
 }
 
 impl ExecutionPlan for DeltaScan {
-    fn name(&self) -> &str {
-        Self::static_name()
+    fn apply_expressions(
+        &self,
+        _f: &mut dyn FnMut(
+            &Arc<dyn datafusion::physical_expr::PhysicalExpr>,
+        ) -> datafusion::common::Result<
+            datafusion::common::tree_node::TreeNodeRecursion,
+        >,
+    ) -> datafusion::common::Result<datafusion::common::tree_node::TreeNodeRecursion> {
+        Ok(datafusion::common::tree_node::TreeNodeRecursion::Continue)
     }
 
-    fn as_any(&self) -> &dyn Any {
-        self
+    fn name(&self) -> &str {
+        Self::static_name()
     }
 
     fn schema(&self) -> SchemaRef {
@@ -634,8 +640,11 @@ impl ExecutionPlan for DeltaScan {
         Some(self.metrics.clone_inner())
     }
 
-    fn partition_statistics(&self, partition: Option<usize>) -> Result<Statistics> {
-        self.parquet_scan.partition_statistics(partition)
+    fn partition_statistics(&self, partition: Option<usize>) -> Result<Arc<Statistics>> {
+        datafusion::physical_plan::statistics::StatisticsContext::new().compute(
+            self.parquet_scan.as_ref(),
+            &datafusion::physical_plan::statistics::StatisticsArgs::new().with_partition(partition),
+        )
     }
 
     fn gather_filters_for_pushdown(
@@ -654,7 +663,7 @@ pub(crate) fn simplify_expr(
     expr: Expr,
 ) -> Result<Arc<dyn PhysicalExpr>> {
     let execution_props = session.execution_props();
-    let context = SimplifyContext::default()
+    let context = SimplifyContext::builder()
         .with_schema(df_schema.clone())
         .with_query_execution_start_time(execution_props.query_execution_start_time)
         .with_config_options(
@@ -662,7 +671,8 @@ pub(crate) fn simplify_expr(
                 .config_options()
                 .cloned()
                 .unwrap_or_else(|| session.config().options().clone()),
-        );
+        )
+        .build();
     let simplifier = ExprSimplifier::new(context).with_max_cycles(10);
     session.create_physical_expr(simplifier.simplify(expr)?, df_schema.as_ref())
 }

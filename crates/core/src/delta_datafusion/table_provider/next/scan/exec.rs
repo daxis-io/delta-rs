@@ -3,7 +3,6 @@
 //! This module implements [`DeltaScanExec`], the core execution plan that reads Parquet files
 //! and applies Delta Lake protocol transformations to produce logical table data.
 
-use std::any::Any;
 use std::collections::VecDeque;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -256,12 +255,19 @@ impl DeltaScanExec {
 }
 
 impl ExecutionPlan for DeltaScanExec {
-    fn name(&self) -> &'static str {
-        "DeltaScanExec"
+    fn apply_expressions(
+        &self,
+        _f: &mut dyn FnMut(
+            &Arc<dyn datafusion::physical_expr::PhysicalExpr>,
+        ) -> datafusion::common::Result<
+            datafusion::common::tree_node::TreeNodeRecursion,
+        >,
+    ) -> datafusion::common::Result<datafusion::common::tree_node::TreeNodeRecursion> {
+        Ok(datafusion::common::tree_node::TreeNodeRecursion::Continue)
     }
 
-    fn as_any(&self) -> &dyn Any {
-        self
+    fn name(&self) -> &'static str {
+        "DeltaScanExec"
     }
 
     fn properties(&self) -> &Arc<PlanProperties> {
@@ -381,10 +387,14 @@ impl ExecutionPlan for DeltaScanExec {
         Some(Arc::new(new_plan))
     }
 
-    fn partition_statistics(&self, partition: Option<usize>) -> Result<Statistics> {
-        self.input
-            .partition_statistics(partition)
-            .and_then(|stats| self.map_statistics(stats))
+    fn partition_statistics(&self, partition: Option<usize>) -> Result<Arc<Statistics>> {
+        datafusion::physical_plan::statistics::StatisticsContext::new()
+            .compute(
+                self.input.as_ref(),
+                &datafusion::physical_plan::statistics::StatisticsArgs::new()
+                    .with_partition(partition),
+            )
+            .and_then(|stats| self.map_statistics((*stats).clone()).map(Arc::new))
     }
 
     fn gather_filters_for_pushdown(
@@ -821,7 +831,7 @@ mod tests {
             .scan(&session.state(), None, &[col("letter").eq(lit("b"))], None)
             .await?;
 
-        let downcast = scan.as_any().downcast_ref::<DeltaScanExec>();
+        let downcast = scan.downcast_ref::<DeltaScanExec>();
         assert!(downcast.is_some());
         assert_eq!(downcast.unwrap().file_id_column.as_deref(), Some("file_id"));
 
@@ -898,7 +908,7 @@ mod tests {
             .scan(&session.state(), Some(&vec![id_idx]), &[], None)
             .await?;
 
-        let downcast = scan.as_any().downcast_ref::<DeltaScanExec>();
+        let downcast = scan.downcast_ref::<DeltaScanExec>();
         assert!(downcast.is_some());
         assert!(downcast.unwrap().file_id_column.is_none());
 
@@ -933,7 +943,6 @@ mod tests {
         let session = Arc::new(create_session().into_inner());
         let scan = provider.scan(&session.state(), None, &[], None).await?;
         let exec = scan
-            .as_any()
             .downcast_ref::<DeltaScanExec>()
             .expect("expected DeltaScanExec");
 
@@ -968,7 +977,6 @@ mod tests {
         let session = Arc::new(create_session().into_inner());
         let scan = provider.scan(&session.state(), None, &[], None).await?;
         let exec = scan
-            .as_any()
             .downcast_ref::<DeltaScanExec>()
             .expect("expected DeltaScanExec");
 
@@ -1006,7 +1014,6 @@ mod tests {
         let session = Arc::new(create_session().into_inner());
         let scan = provider.scan(&session.state(), None, &[], None).await?;
         let exec = scan
-            .as_any()
             .downcast_ref::<DeltaScanExec>()
             .expect("expected DeltaScanExec");
 
@@ -1045,7 +1052,6 @@ mod tests {
         let session = Arc::new(create_session().into_inner());
         let scan = provider.scan(&session.state(), None, &[], None).await?;
         let exec = scan
-            .as_any()
             .downcast_ref::<DeltaScanExec>()
             .expect("expected DeltaScanExec");
 
@@ -1082,7 +1088,6 @@ mod tests {
         let session = Arc::new(create_session().into_inner());
         let scan = provider.scan(&session.state(), None, &[], None).await?;
         let exec = scan
-            .as_any()
             .downcast_ref::<DeltaScanExec>()
             .expect("expected DeltaScanExec");
 
@@ -1140,7 +1145,7 @@ mod tests {
             .scan(&session.state(), None, &[col("letter").eq(lit("b"))], None)
             .await?;
 
-        let downcast = scan.as_any().downcast_ref::<DeltaScanExec>();
+        let downcast = scan.downcast_ref::<DeltaScanExec>();
         assert!(downcast.is_some());
         assert!(downcast.unwrap().file_id_column.is_none());
 
@@ -1358,7 +1363,10 @@ mod tests {
         // for scans without prodicates, we gather only top level statistic
         // and omit collecting column level statistics
         let scan = provider.scan(&session.state(), None, &[], None).await?;
-        let statistics = scan.partition_statistics(None)?;
+        let statistics = datafusion::physical_plan::statistics::StatisticsContext::new().compute(
+            scan.as_ref(),
+            &datafusion::physical_plan::statistics::StatisticsArgs::new().with_partition(None),
+        )?;
         assert_eq!(statistics.num_rows, Precision::Exact(5));
         assert_eq!(statistics.total_byte_size, Precision::Inexact(3240));
         for col_stat in statistics.column_statistics.iter() {
@@ -1377,7 +1385,10 @@ mod tests {
         let scan = provider
             .scan(&session.state(), None, &predicates, None)
             .await?;
-        let statistics = scan.partition_statistics(None)?;
+        let statistics = datafusion::physical_plan::statistics::StatisticsContext::new().compute(
+            scan.as_ref(),
+            &datafusion::physical_plan::statistics::StatisticsArgs::new().with_partition(None),
+        )?;
         for (col_stat, field) in statistics
             .column_statistics
             .iter()
@@ -1417,7 +1428,10 @@ mod tests {
         let scan = provider
             .scan(&session.state(), None, &predicates, None)
             .await?;
-        let statistics = scan.partition_statistics(None)?;
+        let statistics = datafusion::physical_plan::statistics::StatisticsContext::new().compute(
+            scan.as_ref(),
+            &datafusion::physical_plan::statistics::StatisticsArgs::new().with_partition(None),
+        )?;
         assert_eq!(
             statistics.column_statistics.len(),
             provider.schema().fields().len()
@@ -1449,7 +1463,10 @@ mod tests {
         let scan = provider
             .scan(&session.state(), None, &predicates, None)
             .await?;
-        let statistics = scan.partition_statistics(None)?;
+        let statistics = datafusion::physical_plan::statistics::StatisticsContext::new().compute(
+            scan.as_ref(),
+            &datafusion::physical_plan::statistics::StatisticsArgs::new().with_partition(None),
+        )?;
         for (col_stat, _field) in statistics
             .column_statistics
             .iter()
@@ -1480,7 +1497,7 @@ mod tests {
 
         let scan = provider.scan(&session.state(), None, &[], None).await?;
 
-        let downcast = scan.as_any().downcast_ref::<DeltaScanExec>();
+        let downcast = scan.downcast_ref::<DeltaScanExec>();
         assert!(downcast.is_some(), "Expected DeltaScanExec for DV test");
 
         let batches = collect(scan, session.task_ctx()).await?;
@@ -1510,7 +1527,6 @@ mod tests {
 
         let scan = provider.scan(&session.state(), None, &[], None).await?;
         let exec = scan
-            .as_any()
             .downcast_ref::<DeltaScanExec>()
             .expect("Expected DeltaScanExec");
 
@@ -1538,7 +1554,6 @@ mod tests {
 
         let scan = provider.scan(&session.state(), None, &[], None).await?;
         let exec = scan
-            .as_any()
             .downcast_ref::<DeltaScanExec>()
             .expect("Expected DeltaScanExec");
 
@@ -1670,11 +1685,14 @@ mod tests {
         let session = Arc::new(create_session().into_inner());
         let scan = provider.scan(&session.state(), None, &[], None).await?;
         let exec = scan
-            .as_any()
             .downcast_ref::<DeltaScanExec>()
             .expect("expected DeltaScanExec");
 
-        let distribution = exec.required_input_distribution();
+        let distribution: Vec<_> = exec
+            .input_distribution_requirements()
+            .per_child_distributions()
+            .cloned()
+            .collect();
         assert!(
             matches!(
                 distribution.as_slice(),
@@ -1692,7 +1710,11 @@ mod tests {
             exec.metrics.clone(),
         );
 
-        let distribution = retained_exec.required_input_distribution();
+        let distribution: Vec<_> = retained_exec
+            .input_distribution_requirements()
+            .per_child_distributions()
+            .cloned()
+            .collect();
         assert!(
             matches!(distribution.as_slice(), [Distribution::SinglePartition]),
             "unexpected distribution: {distribution:?}"
@@ -1709,7 +1731,6 @@ mod tests {
         let session = Arc::new(create_session().into_inner());
         let scan = provider.scan(&session.state(), None, &[], None).await?;
         let exec = scan
-            .as_any()
             .downcast_ref::<DeltaScanExec>()
             .expect("expected DeltaScanExec");
 

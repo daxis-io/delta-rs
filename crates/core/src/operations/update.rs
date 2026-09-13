@@ -26,7 +26,6 @@ use datafusion::{
     catalog::Session,
     common::{Column, ScalarValue, ToDFSchema as _, exec_datafusion_err},
     error::DataFusionError,
-    execution::context::SessionState,
     logical_expr::{
         ExprSchemable as _, Extension, LogicalPlan, LogicalPlanBuilder, UserDefinedLogicalNode,
         case, cast, col, lit, try_cast, when,
@@ -238,7 +237,8 @@ impl ExtensionPlanner for UpdateMetricExtensionPlanner {
         node: &dyn UserDefinedLogicalNode,
         _logical_inputs: &[&LogicalPlan],
         physical_inputs: &[Arc<dyn ExecutionPlan>],
-        _session_state: &SessionState,
+        _session_state: &dyn datafusion::catalog::Session,
+        _planning_ctx: &datafusion::logical_expr::physical_planning_context::PhysicalPlanningContext,
     ) -> DataFusionResult<Option<Arc<dyn ExecutionPlan>>> {
         if let Some(metric_observer) = node.as_any().downcast_ref::<MetricObserver>()
             && metric_observer.id.eq(UPDATE_COUNT_ID)

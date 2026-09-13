@@ -8,7 +8,12 @@ use arrow_select::{concat::concat_batches, take::take};
 use delta_kernel::DeltaResult;
 use futures::{stream::TryStreamExt, StreamExt};
 use object_store::{local::LocalFileSystem, ObjectStore};
-use parquet::arrow::async_reader::{ParquetObjectReader, ParquetRecordBatchStreamBuilder};
+#[allow(
+    deprecated,
+    reason = "preserve exact range and batched reads on the pinned native reader"
+)]
+use parquet::arrow::async_reader::ParquetObjectReader;
+use parquet::arrow::async_reader::ParquetRecordBatchStreamBuilder;
 use pretty_assertions::assert_eq;
 
 use super::TestCaseInfo;
@@ -23,6 +28,10 @@ pub async fn read_golden(path: &Path, _version: Option<&str>) -> DeltaResult<Rec
     for meta in files.into_iter() {
         if let Some(ext) = meta.location.extension() {
             if ext == "parquet" {
+                #[allow(
+                    deprecated,
+                    reason = "preserve exact range and batched reads on the pinned native reader"
+                )]
                 let reader = ParquetObjectReader::new(store.clone(), meta.location);
                 let builder = ParquetRecordBatchStreamBuilder::new(reader).await?;
                 if schema.is_none() {

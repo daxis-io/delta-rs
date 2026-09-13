@@ -1,11 +1,9 @@
-use std::any::Any;
 use std::borrow::Cow;
 use std::sync::Arc;
 
 use arrow_schema::{Schema as ArrowSchema, SchemaRef};
 use datafusion::logical_expr::utils::conjunction;
-use datafusion::physical_expr::execution_props::ExecutionProps;
-use datafusion::physical_expr::{PhysicalExpr, create_physical_expr};
+use datafusion::physical_expr::PhysicalExpr;
 use datafusion::physical_plan::filter::FilterExec;
 use datafusion::physical_plan::limit::GlobalLimitExec;
 use datafusion::physical_plan::memory::{LazyBatchGenerator, LazyMemoryExec};
@@ -41,10 +39,6 @@ impl LazyTableProvider {
 
 #[async_trait::async_trait]
 impl TableProvider for LazyTableProvider {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn schema(&self) -> Arc<ArrowSchema> {
         self.schema.clone()
     }
@@ -63,7 +57,7 @@ impl TableProvider for LazyTableProvider {
 
     async fn scan(
         &self,
-        _session: &dyn Session,
+        session: &dyn Session,
         projection: Option<&Vec<usize>>,
         filters: &[Expr],
         limit: Option<usize>,
@@ -76,26 +70,24 @@ impl TableProvider for LazyTableProvider {
         let df_schema: DFSchema = plan.schema().try_into()?;
 
         if let Some(filter_expr) = conjunction(filters.iter().cloned()) {
-            let physical_expr =
-                create_physical_expr(&filter_expr, &df_schema, &ExecutionProps::new())?;
+            let physical_expr = session.create_physical_expr(filter_expr, &df_schema)?;
             plan = Arc::new(FilterExec::try_new(physical_expr, plan)?);
         }
 
         if let Some(projection) = projection {
             let current_projection = (0..plan.schema().fields().len()).collect::<Vec<usize>>();
             if projection != &current_projection {
-                let execution_props = &ExecutionProps::new();
                 let fields: DeltaResult<Vec<(Arc<dyn PhysicalExpr>, String)>> = projection
                     .iter()
                     .map(|i| {
                         let (table_ref, field) = df_schema.qualified_field(*i);
-                        create_physical_expr(
-                            &Expr::Column(Column::from((table_ref, field))),
-                            &df_schema,
-                            execution_props,
-                        )
-                        .map(|expr| (expr, field.name().clone()))
-                        .map_err(DeltaTableError::from)
+                        session
+                            .create_physical_expr(
+                                Expr::Column(Column::from((table_ref, field))),
+                                &df_schema,
+                            )
+                            .map(|expr| (expr, field.name().clone()))
+                            .map_err(DeltaTableError::from)
                     })
                     .collect();
                 plan = Arc::new(ProjectionExec::try_new(fields?, plan)?);
@@ -152,10 +144,6 @@ impl TokioDeltaScan {
 
 #[async_trait::async_trait]
 impl TableProvider for TokioDeltaScan {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn schema(&self) -> SchemaRef {
         self.inner.schema()
     }
