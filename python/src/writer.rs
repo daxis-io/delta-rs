@@ -31,7 +31,7 @@ pub fn to_lazy_table(
     )?))
 }
 pub struct ReaderWrapper {
-    reader: Mutex<Box<dyn RecordBatchReader + Send + 'static>>,
+    reader: Mutex<Option<Box<dyn RecordBatchReader + Send + 'static>>>,
 }
 
 impl fmt::Debug for ReaderWrapper {
@@ -45,6 +45,7 @@ impl fmt::Debug for ReaderWrapper {
 #[derive(Debug)]
 pub struct ArrowStreamBatchGenerator {
     pub array_stream: ReaderWrapper,
+    started: bool,
 }
 
 impl fmt::Display for ArrowStreamBatchGenerator {
@@ -61,8 +62,9 @@ impl ArrowStreamBatchGenerator {
     pub fn new(array_stream: Box<dyn RecordBatchReader + Send + 'static>) -> Self {
         Self {
             array_stream: ReaderWrapper {
-                reader: Mutex::new(array_stream),
+                reader: Mutex::new(Some(array_stream)),
             },
+            started: false,
         }
     }
 }
@@ -75,9 +77,13 @@ impl LazyBatchGenerator for ArrowStreamBatchGenerator {
     fn generate_next_batch(
         &mut self,
     ) -> deltalake::datafusion::error::Result<Option<deltalake::arrow::array::RecordBatch>> {
+        self.started = true;
         let mut stream_reader = self.array_stream.reader.lock().map_err(|_| {
+            deltalake::datafusion::error::DataFusionError::Execution(STREAM_LOCK_ERROR.to_string())
+        })?;
+        let stream_reader = stream_reader.as_mut().ok_or_else(|| {
             deltalake::datafusion::error::DataFusionError::Execution(
-                "Failed to lock the ArrowArrayStreamReader".to_string(),
+                STREAM_CONSUMED_ERROR.to_string(),
             )
         })?;
 
@@ -92,13 +98,29 @@ impl LazyBatchGenerator for ArrowStreamBatchGenerator {
     }
 
     fn reset_state(&self) -> Arc<RwLock<dyn LazyBatchGenerator>> {
-        Arc::new(RwLock::new(ExhaustedStreamGenerator))
+        match self.array_stream.reader.lock() {
+            Ok(mut reader) => {
+                if !self.started
+                    && let Some(reader) = reader.take()
+                {
+                    return Arc::new(RwLock::new(Self::new(reader)));
+                }
+            }
+            Err(_) => {
+                return Arc::new(RwLock::new(ExhaustedStreamGenerator(STREAM_LOCK_ERROR)));
+            }
+        }
+        Arc::new(RwLock::new(ExhaustedStreamGenerator(STREAM_CONSUMED_ERROR)))
     }
 }
 
-/// Exhausted stream generator (consumed streams cannot be reset).
+const STREAM_LOCK_ERROR: &str = "Failed to lock the ArrowArrayStreamReader";
+const STREAM_CONSUMED_ERROR: &str = "Stream-based generator cannot be reset; the original stream has \
+    been consumed. Buffer input data if plan re-execution is required.";
+
+/// Carries a stream admission error through the infallible reset interface.
 #[derive(Debug)]
-struct ExhaustedStreamGenerator;
+struct ExhaustedStreamGenerator(&'static str);
 
 impl std::fmt::Display for ExhaustedStreamGenerator {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -115,14 +137,12 @@ impl LazyBatchGenerator for ExhaustedStreamGenerator {
         &mut self,
     ) -> deltalake::datafusion::error::Result<Option<deltalake::arrow::array::RecordBatch>> {
         Err(deltalake::datafusion::error::DataFusionError::Execution(
-            "Stream-based generator cannot be reset; the original stream has been consumed. \
-             Buffer input data if plan re-execution is required."
-                .to_string(),
+            self.0.to_string(),
         ))
     }
 
     fn reset_state(&self) -> Arc<RwLock<dyn LazyBatchGenerator>> {
-        Arc::new(RwLock::new(ExhaustedStreamGenerator))
+        Arc::new(RwLock::new(ExhaustedStreamGenerator(self.0)))
     }
 }
 
@@ -165,5 +185,97 @@ pub fn maybe_lazy_cast_reader(
         })
     } else {
         input
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use deltalake::arrow::array::Int64Array;
+    use deltalake::arrow::datatypes::{DataType, Field, Schema};
+    use deltalake::arrow::record_batch::RecordBatchIterator;
+    use deltalake::datafusion::execution::TaskContext;
+    use deltalake::datafusion::physical_plan::ExecutionPlan;
+    use deltalake::datafusion::physical_plan::memory::LazyMemoryExec;
+    use futures::TryStreamExt;
+
+    #[tokio::test]
+    async fn arrow_stream_first_execution_transfers_reader_and_rejects_replay()
+    -> deltalake::datafusion::error::Result<()> {
+        let schema = Arc::new(Schema::new(vec![Field::new("id", DataType::Int64, false)]));
+        let expected = vec![
+            RecordBatch::try_new(schema.clone(), vec![Arc::new(Int64Array::from(vec![1, 2]))])?,
+            RecordBatch::try_new(schema.clone(), vec![Arc::new(Int64Array::from(vec![3, 4]))])?,
+        ];
+        let reader = || {
+            Box::new(RecordBatchIterator::new(
+                expected.clone().into_iter().map(Ok),
+                schema.clone(),
+            ))
+        };
+        let generator = Arc::new(RwLock::new(ArrowStreamBatchGenerator::new(reader())));
+        let plan = Arc::new(LazyMemoryExec::try_new(schema.clone(), vec![generator])?);
+        let reset_plan = plan.clone().reset_state()?;
+        let first = reset_plan.execute(0, Arc::new(TaskContext::default()))?;
+        let mut competing = reset_plan.execute(0, Arc::new(TaskContext::default()))?;
+        assert!(
+            competing
+                .try_next()
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("original stream has been consumed")
+        );
+        assert_eq!(first.try_collect::<Vec<_>>().await?, expected);
+        let mut replay = reset_plan.execute(0, Arc::new(TaskContext::default()))?;
+        assert!(
+            replay
+                .try_next()
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("original stream has been consumed")
+        );
+
+        let mut partial = ArrowStreamBatchGenerator::new(reader());
+        assert_eq!(partial.generate_next_batch()?, Some(expected[0].clone()));
+        assert!(
+            partial
+                .reset_state()
+                .write()
+                .generate_next_batch()
+                .unwrap_err()
+                .to_string()
+                .contains("original stream has been consumed")
+        );
+        assert_eq!(partial.generate_next_batch()?, Some(expected[1].clone()));
+        assert!(partial.generate_next_batch()?.is_none());
+
+        let mut poisoned = ArrowStreamBatchGenerator::new(reader());
+        assert!(
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let _guard = poisoned.array_stream.reader.lock().unwrap();
+                panic!("poison the reader mutex");
+            }))
+            .is_err()
+        );
+        assert!(matches!(
+            poisoned.generate_next_batch().unwrap_err(),
+            deltalake::datafusion::error::DataFusionError::Execution(message)
+                if message == STREAM_LOCK_ERROR
+        ));
+        let error_generator = poisoned.reset_state();
+        assert!(matches!(
+            error_generator.write().generate_next_batch().unwrap_err(),
+            deltalake::datafusion::error::DataFusionError::Execution(message)
+                if message == STREAM_LOCK_ERROR
+        ));
+        let repeated = error_generator.read().reset_state();
+        assert!(matches!(
+            repeated.write().generate_next_batch().unwrap_err(),
+            deltalake::datafusion::error::DataFusionError::Execution(message)
+                if message == STREAM_LOCK_ERROR
+        ));
+        Ok(())
     }
 }

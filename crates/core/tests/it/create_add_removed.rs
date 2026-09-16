@@ -40,9 +40,44 @@ fn main() {}
 "#,
     );
 
-    let output = Command::new("cargo")
-        .arg("check")
-        .current_dir(crate_dir)
+    let workspace_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap();
+    fs::copy(
+        workspace_dir.join("Cargo.lock"),
+        crate_dir.join("Cargo.lock"),
+    )
+    .unwrap();
+    // Resolve the temporary package with the workspace's pins and Cargo configuration.
+    let cargo = || {
+        let mut command = Command::new("cargo");
+        command
+            .current_dir(workspace_dir)
+            .env("CARGO_TARGET_DIR", crate_dir.join("target"))
+            .env("CARGO_BUILD_JOBS", "2");
+        command
+    };
+    let resolution = cargo()
+        .args([
+            "metadata",
+            "--offline",
+            "--format-version",
+            "1",
+            "--manifest-path",
+        ])
+        .arg(crate_dir.join("Cargo.toml"))
+        .output()
+        .unwrap();
+    assert!(
+        resolution.status.success(),
+        "downstream dependency resolution failed:\n{}",
+        String::from_utf8_lossy(&resolution.stderr),
+    );
+    let output = cargo()
+        .args(["check", "--locked", "--offline", "--manifest-path"])
+        .arg(crate_dir.join("Cargo.toml"))
         .output()
         .unwrap();
 
@@ -57,7 +92,7 @@ fn main() {}
     assert!(
         stderr.contains("no `create_add` in `writer`")
             || stderr.contains("no create_add in writer")
-            || stderr.contains("unresolved import"),
+            || stderr.contains("unresolved import `deltalake_core::writer::create_add`"),
         "expected missing public export error, got stderr:\n{}",
         stderr,
     );
