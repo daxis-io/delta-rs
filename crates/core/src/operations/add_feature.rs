@@ -223,4 +223,23 @@ mod tests {
         assert!(result.is_err());
         Ok(())
     }
+
+    #[tokio::test]
+    async fn v2_checkpoint_upgrade_is_rejected_before_commit() {
+        let table = create_bare_table()
+            .write(vec![get_record_batch(None, false)])
+            .with_configuration([("delta.checkpointInterval", Some("1"))])
+            .await
+            .unwrap();
+        assert_eq!(table.version(), Some(0));
+        let log_store = table.log_store();
+
+        let result = table
+            .add_feature()
+            .with_feature(TableFeatures::V2Checkpoint)
+            .with_allow_protocol_versions_increase(true)
+            .await;
+        assert!(result.unwrap_err().to_string().contains("V2Checkpoint"));
+        assert_eq!(log_store.get_latest_version(0).await.unwrap(), 0);
+    }
 }

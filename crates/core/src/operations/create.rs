@@ -463,6 +463,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn v2_checkpoint_create_is_rejected_before_version_zero() {
+        let table = DeltaTable::new_in_memory();
+        let log_store = table.log_store();
+        let protocol = ProtocolInner::new(3, 7)
+            .append_reader_features([TableFeature::V2Checkpoint])
+            .append_writer_features([TableFeature::V2Checkpoint])
+            .as_kernel();
+        let result = table
+            .create()
+            .with_columns(get_delta_schema().fields().cloned())
+            .with_actions([Action::Protocol(protocol)])
+            .with_configuration_property(TableProperty::CheckpointPolicy, Some("v2"))
+            .await;
+        assert!(result.unwrap_err().to_string().contains("V2Checkpoint"));
+        assert!(log_store.get_latest_version(0).await.is_err());
+    }
+
+    #[tokio::test]
     async fn test_create_local_relative_path() {
         let table_schema = get_delta_schema();
         let tmp_dir = TempDir::new_in(".").unwrap();

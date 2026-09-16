@@ -712,6 +712,25 @@ impl<'a> PreCommit<'a> {
         }
 
         Box::pin(async move {
+            for action in &this.data.actions {
+                if let Action::Protocol(protocol) = action {
+                    let reader_v2 = protocol
+                        .reader_features()
+                        .is_some_and(|features| features.contains(&TableFeature::V2Checkpoint));
+                    let writer_v2 = protocol
+                        .writer_features()
+                        .is_some_and(|features| features.contains(&TableFeature::V2Checkpoint));
+                    if reader_v2 != writer_v2 {
+                        return Err(TransactionError::TableFeaturesRequired(
+                            TableFeature::V2Checkpoint,
+                        )
+                        .into());
+                    }
+                    if writer_v2 {
+                        PROTOCOL.can_write_to_protocol(protocol)?;
+                    }
+                }
+            }
             if let Some(table_reference) = this.table_data {
                 PROTOCOL.can_commit(table_reference, &this.data.actions, &this.data.operation)?;
             }

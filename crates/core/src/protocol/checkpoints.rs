@@ -12,6 +12,7 @@ use regex::Regex;
 use tracing::{debug, error};
 use uuid::Uuid;
 
+use crate::kernel::transaction::PROTOCOL;
 use crate::kernel::{Version, spawn_blocking_with_span};
 use crate::logstore::{DELTA_LOG_REGEX, LogStore};
 use crate::table::config::TablePropertiesExt as _;
@@ -40,6 +41,7 @@ pub(crate) async fn create_checkpoint_for(
     .await
     .map_err(|e| DeltaTableError::Generic(e.to_string()))??;
 
+    PROTOCOL.can_write_to_protocol(snapshot.protocol())?;
     snapshot.checkpoint(engine.as_ref(), None)?;
     Ok(())
 }
@@ -380,6 +382,72 @@ mod tests {
                 .with_save_mode(crate::protocol::SaveMode::Overwrite)
                 .await
                 .unwrap()
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn test_v2_checkpoint_writer_feature_rejected_before_side_effects() {
+            use std::collections::BTreeMap;
+            use std::fs;
+
+            for via_url in [false, true] {
+                let dir = tempfile::tempdir().unwrap();
+                let log = dir.path().join("_delta_log");
+                fs::create_dir(&log).unwrap();
+                fs::write(
+                    log.join("00000000000000000000.json"),
+                    concat!(
+                        "{\"protocol\":{\"minReaderVersion\":3,\"minWriterVersion\":7,",
+                        "\"readerFeatures\":[\"v2Checkpoint\"],",
+                        "\"writerFeatures\":[\"v2Checkpoint\"]}}\n",
+                        "{\"metaData\":{\"id\":\"v2-test\",",
+                        "\"format\":{\"provider\":\"parquet\",\"options\":{}},",
+                        "\"schemaString\":\"{\\\"type\\\":\\\"struct\\\",\\\"fields\\\":[{\\\"name\\\":\\\"id\\\",\\\"type\\\":\\\"integer\\\",\\\"nullable\\\":true,\\\"metadata\\\":{}}]}",
+                        "\",\"partitionColumns\":[],\"configuration\":{},",
+                        "\"createdTime\":0}}\n",
+                    ),
+                )
+                .unwrap();
+                for version in 1..=7 {
+                    fs::write(
+                        log.join(format!("{version:020}.json")),
+                        "{\"commitInfo\":{\"timestamp\":0,\"operation\":\"WRITE\"}}\n",
+                    )
+                    .unwrap();
+                }
+
+                let before: BTreeMap<_, _> = fs::read_dir(&log)
+                    .unwrap()
+                    .map(|entry| {
+                        let path = entry.unwrap().path();
+                        (
+                            path.file_name().unwrap().to_owned(),
+                            fs::read(path).unwrap(),
+                        )
+                    })
+                    .collect();
+                let url = Url::from_directory_path(dir.path()).unwrap();
+                let result = if via_url {
+                    create_checkpoint_from_table_url_and_cleanup(url, 7, Some(true), None).await
+                } else {
+                    let table = open_table_with_version(url, 7).await.unwrap();
+                    create_checkpoint(&table, None).await
+                };
+                assert!(
+                    result.unwrap_err().to_string().contains("V2Checkpoint"),
+                    "unsupported V2 writer feature must be named"
+                );
+                let after: BTreeMap<_, _> = fs::read_dir(&log)
+                    .unwrap()
+                    .map(|entry| {
+                        let path = entry.unwrap().path();
+                        (
+                            path.file_name().unwrap().to_owned(),
+                            fs::read(path).unwrap(),
+                        )
+                    })
+                    .collect();
+                assert_eq!(before, after);
+            }
         }
         /// This test validates that a checkpoint can be written and re-read with the minimum viable
         /// Metadata. There was a bug which didn't handle the optionality of createdTime.

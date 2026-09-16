@@ -217,9 +217,14 @@ impl ProtocolChecker {
 
     /// Check if delta-rs can write to the given delta table.
     pub fn can_write_to(&self, snapshot: &dyn TableReference) -> Result<(), TransactionError> {
+        self.can_write_to_protocol(snapshot.protocol())
+    }
+
+    /// Check if delta-rs can write to a table with the given protocol.
+    pub fn can_write_to_protocol(&self, protocol: &Protocol) -> Result<(), TransactionError> {
         // NOTE: writers must always support all required reader features
-        self.can_read_from(snapshot)?;
-        let min_writer_version = snapshot.protocol().min_writer_version();
+        self.can_read_from_protocol(protocol)?;
+        let min_writer_version = protocol.min_writer_version();
 
         let required_features: Option<HashSet<TableFeature>> = match min_writer_version {
             0 | 1 => None,
@@ -228,7 +233,7 @@ impl ProtocolChecker {
             4 => Some(WRITER_V4.clone()),
             5 => Some(WRITER_V5.clone()),
             6 => Some(WRITER_V6.clone()),
-            _ => snapshot.protocol().writer_features_set(),
+            _ => protocol.writer_features_set(),
         };
 
         trace!("my writer features: {:?}", self.writer_features);
@@ -297,6 +302,7 @@ pub static INSTANCE: LazyLock<ProtocolChecker> = LazyLock::new(|| {
     let mut reader_features = HashSet::new();
     reader_features.insert(TableFeature::TimestampWithoutTimezone);
     reader_features.insert(TableFeature::DeletionVectors);
+    reader_features.insert(TableFeature::V2Checkpoint);
     reader_features.insert(TableFeature::VariantType);
     reader_features.insert(TableFeature::VariantTypePreview);
     #[cfg(feature = "nanosecond-timestamps")]
@@ -794,6 +800,54 @@ mod tests {
             assert!(checker.can_read_from(eager).is_ok());
             assert!(checker.can_write_to(eager).is_ok());
         }
+    }
+
+    #[tokio::test]
+    async fn test_v2_checkpoint_read_only_admission() {
+        let protocol = ProtocolInner::new(3, 7)
+            .append_reader_features([TableFeature::V2Checkpoint])
+            .append_writer_features([TableFeature::V2Checkpoint]);
+        let snapshot = DeltaTableState::from_actions(vec![
+            Action::Protocol(protocol.clone().as_kernel()),
+            metadata_action(None).into(),
+        ])
+        .await
+        .unwrap();
+        assert!(INSTANCE.can_read_from(snapshot.snapshot()).is_ok());
+        assert!(matches!(
+            INSTANCE.can_write_to(snapshot.snapshot()),
+            Err(TransactionError::UnsupportedTableFeatures(features))
+                if features == vec![TableFeature::V2Checkpoint]
+        ));
+
+        for unsupported in [
+            TableFeature::Unknown("unknownReaderFeature".to_string()),
+            TableFeature::TypeWidening,
+        ] {
+            let mixed = protocol
+                .clone()
+                .append_reader_features([unsupported.clone()])
+                .append_writer_features([unsupported.clone()])
+                .as_kernel();
+            assert!(matches!(
+                INSTANCE.can_read_from_protocol(&mixed),
+                Err(TransactionError::UnsupportedTableFeatures(features))
+                    if features == vec![unsupported]
+            ));
+        }
+
+        let writer_only = DeltaTableState::from_actions(vec![
+            Action::Protocol(
+                ProtocolInner::new(1, 7)
+                    .append_writer_features([TableFeature::AppendOnly])
+                    .as_kernel(),
+            ),
+            metadata_action(None).into(),
+        ])
+        .await
+        .unwrap();
+        assert!(INSTANCE.can_read_from(writer_only.snapshot()).is_ok());
+        assert!(INSTANCE.can_write_to(writer_only.snapshot()).is_ok());
     }
 
     #[tokio::test]
