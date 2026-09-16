@@ -49,7 +49,9 @@ runs:
       run: echo "RUST_BACKTRACE=1" >> $GITHUB_ENV
     - name: Disable incremental compilation
       shell: bash
-      run: echo CARGO_INCREMENTAL=0 >> $GITHUB_ENV
+      run: |
+        echo CARGO_INCREMENTAL=0 >> $GITHUB_ENV
+        echo CARGO_BUILD_JOBS=2 >> $GITHUB_ENV
 
     # v0.0.9 <https://github.com/Mozilla-Actions/sccache-action/releases/tag/v0.0.9>
     - name: Setup sccache
