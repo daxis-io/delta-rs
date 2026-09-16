@@ -83,8 +83,8 @@ jobs:
       - name: Build and install deltalake
         run: make develop
 
-      - name: Assert DataFusion major version
-        run: uv run --no-sync python -c "from importlib.metadata import version; v=version('datafusion'); assert v.split('.')[0]=='53', f'Expected 53.x, got {v}'"
+      - name: Assert pinned DataFusion compatibility version
+        run: uv run --no-sync python -c "from importlib.metadata import version; v=version('datafusion'); assert v=='55.0.0+axon.1', f'Expected Native 55.0.0+axon.1, got {v}'"
 
       - name: Run DataFusion integration test
         run: DELTALAKE_RUN_DATAFUSION_TESTS=1 uv run --no-sync pytest -v tests/test_datafusion.py -m datafusion

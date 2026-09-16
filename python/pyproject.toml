@@ -111,7 +111,7 @@ dev = [
 ]
 opentelemetry = ["opentelemetry-sdk>=1.20.0", "opentelemetry-api>=1.20.0"]
 polars = ["polars==1.32"]
-datafusion = ["datafusion==53.*"]
+datafusion = ["datafusion @ git+https://github.com/daxis-io/datafusion-python.git@44d67eb62906e55588c70a2794b2ddbb008cce58"]
 lakefs = ["lakefs==0.8.0"]
 pyspark = [
     "pyspark==4.0.1",
