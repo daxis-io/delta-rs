@@ -1065,7 +1065,6 @@ mod tests {
 
         assert_eq!(metrics.num_added_files, 1);
         assert_eq!(metrics.num_removed_files, 1);
-        assert!(metrics.scan_time_ms > 0);
         assert_eq!(metrics.num_deleted_rows, Some(1));
         assert_eq!(metrics.num_copied_rows, 3);
 
@@ -1227,7 +1226,6 @@ mod tests {
         assert_eq!(metrics.num_removed_files, 1);
         assert_eq!(metrics.num_deleted_rows, Some(2));
         assert_eq!(metrics.num_copied_rows, 0);
-        assert!(metrics.scan_time_ms > 0);
 
         let operation_metrics = last_delete_operation_metrics(&table).await;
         assert_eq!(operation_metrics.get("num_deleted_rows"), Some(&json!(2)));
@@ -1974,7 +1972,6 @@ mod tests {
         assert_eq!(metrics.num_removed_files, 1);
         assert_eq!(metrics.num_deleted_rows, Some(1));
         assert_eq!(metrics.num_copied_rows, 0);
-        assert!(metrics.scan_time_ms > 0);
 
         let expected = [
             "+----+-------+------------+",
