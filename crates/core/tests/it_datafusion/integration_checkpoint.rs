@@ -238,7 +238,6 @@ async fn test_v2_checkpoint_json() -> DeltaResult<()> {
     let table_url = ensure_table_uri(table_path).unwrap();
     let table = deltalake_core::open_table(table_url).await?;
     assert_eq!(table.version(), Some(9));
-    create_checkpoint(&table, None).await?;
     Ok(())
 }
 

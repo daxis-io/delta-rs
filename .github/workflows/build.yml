@@ -2,9 +2,9 @@ name: build
 
 on:
   push:
-    branches: [main, "release/*", "rust-v*"]
+    branches: [main, "axon/native-stack", "release/*", "rust-v*"]
   pull_request:
-    branches: [main, "release/*", "rust-v*", next, next/*]
+    branches: [main, "axon/native-stack", "release/*", "rust-v*", next, next/*]
   merge_group:
 
 env:

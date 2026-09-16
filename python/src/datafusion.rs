@@ -191,6 +191,7 @@ impl TableProvider for TokioDeltaScan {
 mod tests {
     use super::*;
 
+    use std::any::Any;
     use std::sync::Arc;
 
     use arrow_schema::{DataType, Field, Schema as ArrowSchema};
@@ -370,7 +371,7 @@ mod tests {
 
         // The plan should include a LimitExec
         // We can verify this by checking that the plan type is correct
-        assert!(plan.as_any().downcast_ref::<GlobalLimitExec>().is_some());
+        assert!(plan.is::<GlobalLimitExec>());
     }
 
     #[tokio::test]
@@ -407,6 +408,6 @@ mod tests {
 
         // The resulting plan should have a chain of operations:
         // GlobalLimitExec -> ProjectionExec -> FilterExec -> LazyMemoryExec
-        assert!(plan.as_any().downcast_ref::<GlobalLimitExec>().is_some());
+        assert!(plan.is::<GlobalLimitExec>());
     }
 }
