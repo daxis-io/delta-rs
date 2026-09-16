@@ -3,9 +3,9 @@ name: python_build
 on:
   merge_group:
   push:
-    branches: [main, "release/*"]
+    branches: [main, "axon/native-stack", "release/*"]
   pull_request:
-    branches: [main, "release/*", next, next/*]
+    branches: [main, "axon/native-stack", "release/*", next, next/*]
 
 defaults:
   run:
