@@ -70,6 +70,6 @@ datafusion-session = { git = "https://github.com/daxis-io/datafusion.git", rev =
 datafusion-spark = { git = "https://github.com/daxis-io/datafusion.git", rev = "5791b64dd7ce8e72654f99534d3d8d9dacc41b6b" }
 datafusion-sql = { git = "https://github.com/daxis-io/datafusion.git", rev = "5791b64dd7ce8e72654f99534d3d8d9dacc41b6b" }
 datafusion-substrait = { git = "https://github.com/daxis-io/datafusion.git", rev = "5791b64dd7ce8e72654f99534d3d8d9dacc41b6b" }
-delta_kernel = { git = "https://github.com/daxis-io/delta-kernel-rs.git", rev = "40b7e71544864c7bcc5486a82ee1483b88f580a1" }
-delta_kernel_default_engine = { git = "https://github.com/daxis-io/delta-kernel-rs.git", rev = "40b7e71544864c7bcc5486a82ee1483b88f580a1" }
-datafusion_executor = { git = "https://github.com/daxis-io/delta-kernel-rs.git", rev = "40b7e71544864c7bcc5486a82ee1483b88f580a1" }
+delta_kernel = { git = "https://github.com/daxis-io/delta-kernel-rs.git", rev = "baf0352b9ef34056be33a23380e8e2da1233b361" }
+delta_kernel_default_engine = { git = "https://github.com/daxis-io/delta-kernel-rs.git", rev = "baf0352b9ef34056be33a23380e8e2da1233b361" }
+datafusion_executor = { git = "https://github.com/daxis-io/delta-kernel-rs.git", rev = "baf0352b9ef34056be33a23380e8e2da1233b361" }

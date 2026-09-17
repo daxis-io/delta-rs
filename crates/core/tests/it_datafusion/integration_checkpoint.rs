@@ -1,11 +1,15 @@
 use chrono::Utc;
+use delta_kernel::table_features::TableFeature;
 use deltalake_core::DeltaTable;
 use deltalake_core::checkpoints::{cleanup_expired_logs_for, create_checkpoint};
+use deltalake_core::errors::{DeltaResult, DeltaTableError};
+use deltalake_core::kernel::transaction::TransactionError;
 use deltalake_core::kernel::{DataType, PrimitiveType};
 use deltalake_core::logstore::object_store::ObjectStoreExt as _;
 use deltalake_core::writer::{DeltaWriter, JsonWriter};
-use deltalake_core::{DeltaTableBuilder, ensure_table_uri, errors::DeltaResult};
+use deltalake_core::{DeltaTableBuilder, ensure_table_uri};
 use deltalake_test::utils::*;
+use futures::TryStreamExt;
 use object_store::path::Path;
 use serde_json::json;
 use serial_test::serial;
@@ -231,13 +235,30 @@ async fn test_older_checkpoint_reads() -> DeltaResult<()> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-/// This test validates that we can read a table with v2 checkpoints
-async fn test_v2_checkpoint_json() -> DeltaResult<()> {
+async fn test_v2_checkpoint_json_read_does_not_enable_checkpoint_writes() -> DeltaResult<()> {
     let temp_table = clone_table("checkpoint-v2-table");
     let table_path = temp_table.path().to_str().unwrap();
     let table_url = ensure_table_uri(table_path).unwrap();
     let table = deltalake_core::open_table(table_url).await?;
     assert_eq!(table.version(), Some(9));
+    let store = table.log_store().object_store(None);
+    let mut before = store.list(None).try_collect::<Vec<_>>().await?;
+    before.sort_by(|a, b| a.location.cmp(&b.location));
+    let error = create_checkpoint(&table, None)
+        .await
+        .expect_err("V2 checkpoint reads must not admit checkpoint writes");
+    assert!(matches!(
+        error,
+        DeltaTableError::Transaction {
+            source: TransactionError::UnsupportedTableFeatures(features)
+        } if features.contains(&TableFeature::V2Checkpoint)
+    ));
+    let mut after = store.list(None).try_collect::<Vec<_>>().await?;
+    after.sort_by(|a, b| a.location.cmp(&b.location));
+    assert_eq!(
+        before, after,
+        "rejected writes must not change table objects"
+    );
     Ok(())
 }
 

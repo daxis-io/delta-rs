@@ -12,7 +12,7 @@ from deltalake import (
     write_deltalake,
 )
 from deltalake._internal import _NANOSECOND_TIMESTAMPS
-from deltalake.exceptions import DeltaError
+from deltalake.exceptions import CommitFailedError, DeltaError
 from deltalake.schema import Field as DeltaField
 from deltalake.schema import PrimitiveType, StructType
 
@@ -475,8 +475,12 @@ all_features.append(features)
 
 @pytest.mark.pyarrow
 @pytest.mark.parametrize("feature", all_features)
-def test_add_feature_variations(existing_table: DeltaTable, feature):
+def test_add_feature_variations(existing_table: DeltaTable, tmp_path, feature):
     """Existing table already has timestampNtz so it's already at v3,7"""
+    requested = feature if isinstance(feature, list) else [feature]
+    if TableFeatures.V2Checkpoint in requested:
+        assert_v2_feature_write_rejected(existing_table, tmp_path, feature, False)
+        return
     existing_table.alter.add_feature(
         feature=feature,
         allow_protocol_versions_increase=False,
@@ -505,15 +509,40 @@ def test_add_features_disallowed_protocol_increase(existing_sample_table: DeltaT
         )
 
 
-def test_add_features(existing_sample_table: DeltaTable):
+def assert_v2_feature_write_rejected(table, path, feature, allow_increase):
+    version, protocol = table.version(), table.protocol()
+    objects = {
+        p.relative_to(path): p.read_bytes() for p in path.rglob("*") if p.is_file()
+    }
+    with pytest.raises(CommitFailedError, match="Unsupported.*V2Checkpoint"):
+        table.alter.add_feature(
+            feature=feature, allow_protocol_versions_increase=allow_increase
+        )
+    assert table.version() == version
+    assert table.protocol() == protocol
+    assert DeltaTable(path).protocol() == protocol
+    assert {
+        p.relative_to(path): p.read_bytes() for p in path.rglob("*") if p.is_file()
+    } == objects
+
+
+@pytest.mark.parametrize("include_v2", [False, True])
+def test_add_features(existing_sample_table: DeltaTable, tmp_path, include_v2):
+    if include_v2:
+        assert_v2_feature_write_rejected(
+            existing_sample_table, tmp_path, features, True
+        )
+        return
     existing_sample_table.alter.add_feature(
-        feature=features,
+        feature=[
+            feature for feature in features if feature != TableFeatures.V2Checkpoint
+        ],
         allow_protocol_versions_increase=True,
     )
     protocol = existing_sample_table.protocol()
 
     assert sorted(protocol.reader_features) == sorted(  # type: ignore
-        ["v2Checkpoint", "columnMapping", "deletionVectors", "timestampNtz"]
+        ["columnMapping", "deletionVectors", "timestampNtz"]
     )
     assert sorted(protocol.writer_features) == sorted(  # type: ignore
         [
@@ -529,7 +558,6 @@ def test_add_features(existing_sample_table: DeltaTable):
             "invariants",
             "rowTracking",
             "timestampNtz",
-            "v2Checkpoint",
         ]
     )  # type: ignore
 
