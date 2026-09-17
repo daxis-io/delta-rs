@@ -1,31 +1,11 @@
-#!/usr/bin/env python3
-
-import os
 import pathlib
-import shutil
 
 import pytest
 from arro3.core import Array, DataType, Table
 from arro3.core import Field as ArrowField
 
 from deltalake import DeltaTable, write_deltalake
-
-
-def clean_data_dir(data_path):
-    if os.path.exists(data_path):
-        try:
-            shutil.rmtree(data_path)
-        except Exception as e:
-            print(f"Error deleting directory {data_path}: {e}")
-
-
-def print_log_dir(path):
-    # Show log contents
-    log_path = os.path.join(path, "_delta_log")
-    if os.path.exists(log_path):
-        print("Delta log contents:")
-        for file in sorted(os.listdir(log_path)):
-            print(f"  {file}")
+from deltalake.exceptions import DeltaError
 
 
 def valid_gc_data(version) -> Table:
@@ -33,51 +13,60 @@ def valid_gc_data(version) -> Table:
     gc = ArrowField("gc", DataType.int32(), nullable=True).with_metadata(
         {"delta.generationExpression": "10"}
     )
-    data = Table.from_pydict(
+    return Table.from_pydict(
         {"id": Array([version, version], type=id_col), "gc": Array([10, 10], type=gc)},
     )
-    return data
+
+
+def test_generated_columns_checkpoint_rejected(tmp_path: pathlib.Path):
+    write_deltalake(
+        tmp_path, valid_gc_data(0), configuration={"delta.minWriterVersion": "7"}
+    )
+    table = DeltaTable(tmp_path)
+    objects = {
+        p.relative_to(tmp_path): p.read_bytes()
+        for p in tmp_path.rglob("*")
+        if p.is_file()
+    }
+    with pytest.raises(
+        DeltaError, match="Unsupported: Feature 'generatedColumns' is not supported"
+    ):
+        table.create_checkpoint()
+    assert table.version() == DeltaTable(tmp_path).version() == 0
+    assert {
+        p.relative_to(tmp_path): p.read_bytes()
+        for p in tmp_path.rglob("*")
+        if p.is_file()
+    } == objects
 
 
 @pytest.mark.pandas
-def test_failed_cleanup(tmp_path: pathlib.Path):
-    data_path = tmp_path
-    clean_data_dir(data_path)
-
-    # write 10 versions of the data
+def test_cleanup_from_old_snapshot_preserves_logs(tmp_path: pathlib.Path):
     for i in range(10):
-        data = valid_gc_data(i)
+        data = Table.from_pydict(
+            {
+                "id": Array([i, i], DataType.int32()),
+                "gc": Array([10, 10], DataType.int32()),
+            }
+        )
         write_deltalake(
-            data_path,
+            tmp_path,
             mode="overwrite",
             data=data,
-            configuration={
-                "delta.minWriterVersion": "7",
-                "delta.logRetentionDuration": "interval 0 day",
-            },
+            configuration={"delta.logRetentionDuration": "interval 0 day"},
         )
 
-    # checkpoint final version
-    table = DeltaTable(data_path)
-    table.create_checkpoint()
-
-    # show log contents
-    print("log contents before cleanup:")
-    print_log_dir(data_path)
-
-    # Call cleanup metadata
-    table = DeltaTable(data_path, version=5)
-    # table.create_checkpoint()  # Workaround, manually create checkpoint needed to load version >= 5
-    table.cleanup_metadata()
-
-    # show log contents
-    print("\n################################################")
-    print("log contents after cleanup:")
-    print_log_dir(data_path)
-
-    # Load old version
-    table = DeltaTable(data_path, version=5)
-    df2 = table.to_pandas()
-    print("\n################################################")
-    print("Version 5 of the data:")
-    print(df2)
+    DeltaTable(tmp_path).create_checkpoint()
+    log_path = tmp_path / "_delta_log"
+    logs = {p.name: p.read_bytes() for p in log_path.iterdir() if p.is_file()}
+    # Checkpoint 9 cannot establish a deletion boundary for snapshot 5.
+    DeltaTable(tmp_path, version=5).cleanup_metadata()
+    assert {p.name: p.read_bytes() for p in log_path.iterdir() if p.is_file()} == logs
+    assert DeltaTable(tmp_path, version=5).to_pandas().to_dict("list") == {
+        "id": [5, 5],
+        "gc": [10, 10],
+    }
+    assert DeltaTable(tmp_path).to_pandas().to_dict("list") == {
+        "id": [9, 9],
+        "gc": [10, 10],
+    }
