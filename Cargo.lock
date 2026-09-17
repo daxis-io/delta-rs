@@ -2556,7 +2556,7 @@ dependencies = [
 [[package]]
 name = "datafusion_executor"
 version = "0.26.0"
-source = "git+https://github.com/daxis-io/delta-kernel-rs.git?rev=7253291f5aeedc295f759ee69a5b2c4e52296585#7253291f5aeedc295f759ee69a5b2c4e52296585"
+source = "git+https://github.com/daxis-io/delta-kernel-rs.git?rev=baf0352b9ef34056be33a23380e8e2da1233b361#baf0352b9ef34056be33a23380e8e2da1233b361"
 dependencies = [
  "async-trait",
  "bytes",
@@ -2625,7 +2625,7 @@ dependencies = [
 [[package]]
 name = "delta_kernel"
 version = "0.28.0"
-source = "git+https://github.com/daxis-io/delta-kernel-rs.git?rev=7253291f5aeedc295f759ee69a5b2c4e52296585#7253291f5aeedc295f759ee69a5b2c4e52296585"
+source = "git+https://github.com/daxis-io/delta-kernel-rs.git?rev=baf0352b9ef34056be33a23380e8e2da1233b361#baf0352b9ef34056be33a23380e8e2da1233b361"
 dependencies = [
  "arrow",
  "bytes",
@@ -2660,7 +2660,7 @@ dependencies = [
 [[package]]
 name = "delta_kernel_default_engine"
 version = "0.28.0"
-source = "git+https://github.com/daxis-io/delta-kernel-rs.git?rev=7253291f5aeedc295f759ee69a5b2c4e52296585#7253291f5aeedc295f759ee69a5b2c4e52296585"
+source = "git+https://github.com/daxis-io/delta-kernel-rs.git?rev=baf0352b9ef34056be33a23380e8e2da1233b361#baf0352b9ef34056be33a23380e8e2da1233b361"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -2680,7 +2680,7 @@ dependencies = [
 [[package]]
 name = "delta_kernel_derive"
 version = "0.28.0"
-source = "git+https://github.com/daxis-io/delta-kernel-rs.git?rev=7253291f5aeedc295f759ee69a5b2c4e52296585#7253291f5aeedc295f759ee69a5b2c4e52296585"
+source = "git+https://github.com/daxis-io/delta-kernel-rs.git?rev=baf0352b9ef34056be33a23380e8e2da1233b361#baf0352b9ef34056be33a23380e8e2da1233b361"
 dependencies = [
  "proc-macro2",
  "quote",
